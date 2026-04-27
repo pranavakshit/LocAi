@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from core.model_router import chat, list_models, pull_model
+from core.model_router import chat_stream, list_models, pull_model
+from fastapi.responses import StreamingResponse
 import json
 import os
 
@@ -32,7 +33,7 @@ def set_model(model):
 
 @app.get("/")
 def root():
-    return {"status": "LocAI running"}
+    return {"status": "LocAi running"}
 
 
 @app.get("/model")
@@ -42,20 +43,78 @@ def current_model():
 
 @app.post("/model")
 def change_model(req: ModelRequest):
-    models = list_models()
 
-    if req.model not in models:
-        pull_model(req.model)
+    def stream():
+        import requests
+        import json
 
-    set_model(req.model)
-    return {"status": "model set", "model": req.model}
+        models = list_models()
+
+        # If model not present → stream download
+        if req.model not in models:
+
+            res = requests.post(
+                "http://localhost:11434/api/pull",
+                json={"name": req.model},
+                stream=True
+            )
+
+            seen_status = set()
+
+            for line in res.iter_lines():
+                if not line:
+                    continue
+
+                try:
+                    j = json.loads(line.decode("utf-8"))
+
+                    # status (print once)
+                    if "status" in j and "digest" not in j:
+                        status = j["status"]
+                        if status not in seen_status:
+                            yield status + "\n"
+                            seen_status.add(status)
+
+                    # progress
+                    if "digest" in j and "completed" in j and "total" in j:
+                        percent = (j["completed"] / j["total"]) * 100
+                        yield f"pulling {j['digest'][:12]}: {percent:.2f}%\n"
+
+                except:
+                    pass
+
+        # after download / if already exists
+        set_model(req.model)
+        yield f"Model set to {req.model}\n"
+        yield "success\n"
+
+    return StreamingResponse(stream(), media_type="text/plain")
+
+
+chat_history = []
 
 
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
+    global chat_history
     model = get_model()
-    response = chat(model, req.message)
-    return {"response": response}
+
+    chat_history.append({"role": "user", "content": req.message})
+
+    # Limit context size (basic truncation)
+    if len(chat_history) > 20:
+        chat_history = chat_history[-20:]
+
+    def generator():
+        full_response = ""
+        for token in chat_stream(model, chat_history):
+            full_response += token
+            yield token
+            yield ""  # 🔥 forces flush
+            
+        chat_history.append({"role": "assistant", "content": full_response})
+
+    return StreamingResponse(generator(), media_type="text/plain")
 
 @app.get("/models")
 def get_models():

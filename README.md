@@ -1,4 +1,4 @@
-# LocAI
+# LocAi
 
 A local AI system built from scratch.
 
@@ -17,7 +17,7 @@ Started as a simple idea: run a local model and talk to it.
 ## Structure
 
 ```
-LocAI/
+LocAi/
 ├── core/        # Backend API
 ├── cli/         # Command line interface
 ├── gui/         # Desktop app (Qt)

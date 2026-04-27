@@ -2,7 +2,7 @@ import requests
 
 API = "http://localhost:8000"
 
-print("LocAI CLI (type 'exit' to quit)\n")
+print("LocAi CLI (type 'exit' to quit)\n")
 
 while True:
     msg = input("You: ")
