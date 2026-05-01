@@ -99,6 +99,9 @@ class LocAiWindow(QMainWindow):
         self.thinking_index = 0
         self.thinking_active = False
 
+        self.chat_history = []
+        self.current_ai_response = ""
+
         self.load_model()
 
     # -----------------------
@@ -122,10 +125,13 @@ class LocAiWindow(QMainWindow):
         self.thinking_index = 0
         self.thinking_timer.start(300)
 
+        self.chat_history.append({"role": "user", "content": msg})
+        self.current_ai_response = ""
+
         def task():
             res = requests.post(
                 f"{API}/chat",
-                json={"message": msg},
+                json={"messages": self.chat_history},
                 stream=True
             )
 
@@ -136,7 +142,13 @@ class LocAiWindow(QMainWindow):
         self.worker = StreamWorker(task)
         self.worker.chunk_received.connect(self.enqueue_text)
         self.worker.started_stream.connect(self.stop_thinking)
+        self.worker.finished.connect(self.on_ai_finished)
         self.worker.start()
+
+    def on_ai_finished(self):
+        if self.current_ai_response:
+            self.chat_history.append({"role": "assistant", "content": self.current_ai_response})
+            self.current_ai_response = ""
 
     # -----------------------
     # 🤖 Thinking animation
@@ -179,6 +191,7 @@ class LocAiWindow(QMainWindow):
     # -----------------------
     def enqueue_text(self, text):
         self.buffer += text
+        self.current_ai_response += text
 
     def flush_buffer(self):
         if not self.buffer:
@@ -231,7 +244,7 @@ class LocAiWindow(QMainWindow):
 # -----------------------
 # 🚀 Entry
 # -----------------------
-if __name__ == "__main__":
+def run_gui():
     app = QApplication(sys.argv)
 
     app.setStyleSheet("""
@@ -263,4 +276,7 @@ if __name__ == "__main__":
 
     window = LocAiWindow()
     window.show()
-    sys.exit(app.exec())
+    return app.exec()
+
+if __name__ == "__main__":
+    sys.exit(run_gui())

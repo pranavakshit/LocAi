@@ -11,7 +11,7 @@ CONFIG_FILE = "config.json"
 
 
 class ChatRequest(BaseModel):
-    message: str
+    messages: list[dict[str, str]]
 
 
 class ModelRequest(BaseModel):
@@ -91,28 +91,14 @@ def change_model(req: ModelRequest):
     return StreamingResponse(stream(), media_type="text/plain")
 
 
-chat_history = []
-
-
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
-    global chat_history
     model = get_model()
 
-    chat_history.append({"role": "user", "content": req.message})
-
-    # Limit context size (basic truncation)
-    if len(chat_history) > 20:
-        chat_history = chat_history[-20:]
-
     def generator():
-        full_response = ""
-        for token in chat_stream(model, chat_history):
-            full_response += token
+        for token in chat_stream(model, req.messages):
             yield token
             yield ""  # 🔥 forces flush
-            
-        chat_history.append({"role": "assistant", "content": full_response})
 
     return StreamingResponse(generator(), media_type="text/plain")
 

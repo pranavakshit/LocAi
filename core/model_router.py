@@ -31,7 +31,7 @@ def chat_stream(model, messages):
             try:
                 j = json.loads(line.decode("utf-8"))
 
-                # token chunk from chat
+                # token chunk
                 if "message" in j and "content" in j["message"]:
                     yield j["message"]["content"]
 
@@ -45,11 +45,25 @@ def chat_stream(model, messages):
 # -----------------------
 # 🧠 Normal Chat (fallback)
 # -----------------------
-def chat(model, messages):
+def chat(model, prompt):
     try:
+        response = requests.post(OLLAMA_GENERATE, json={
+            "model": model,
+            "prompt": prompt,
+            "stream": False
+        })
+
+        data = response.json()
+
+        if "response" in data:
+            return data["response"]
+
+        # fallback → chat API
         response = requests.post(OLLAMA_CHAT, json={
             "model": model,
-            "messages": messages,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
             "stream": False
         })
 

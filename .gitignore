@@ -20,3 +20,11 @@ Thumbs.db
 
 # Config
 # config.json
+# Build
+build/
+dist/
+*.spec
+
+# Virtual Env
+.venv/
+
