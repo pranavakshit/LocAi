@@ -6,3 +6,7 @@ PySide6
 pyinstaller
 
 markdown
+
+chromadb
+pypdf
+python-docx

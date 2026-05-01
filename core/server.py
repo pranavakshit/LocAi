@@ -2,10 +2,12 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from core.model_router import chat_stream, list_models, pull_model
 from fastapi.responses import StreamingResponse
+from core.rag import RAGManager
 import json
 import os
 
 app = FastAPI()
+rag_manager = RAGManager()
 
 CONFIG_FILE = "config.json"
 
@@ -16,6 +18,10 @@ class ChatRequest(BaseModel):
 
 class ModelRequest(BaseModel):
     model: str
+
+
+class RAGRequest(BaseModel):
+    file_path: str
 
 
 def get_model():
@@ -95,12 +101,27 @@ def change_model(req: ModelRequest):
 def chat_endpoint(req: ChatRequest):
     model = get_model()
 
+    # RAG injection
+    user_query = req.messages[-1]["content"] if req.messages and req.messages[-1]["role"] == "user" else ""
+    if user_query:
+        rag_results = rag_manager.query(user_query)
+        if rag_results:
+            context = "\n\n".join(rag_results)
+            system_msg = f"Use the following retrieved document snippets to answer the user's question. If the snippets are not relevant, ignore them and answer normally.\n\n--- LOCAL FILE CONTEXT ---\n{context}\n--------------------"
+            
+            # Insert system message at the top
+            req.messages.insert(0, {"role": "system", "content": system_msg})
+
     def generator():
         for token in chat_stream(model, req.messages):
             yield token
             yield ""  # 🔥 forces flush
 
     return StreamingResponse(generator(), media_type="text/plain")
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 @app.get("/models")
 def get_models():
@@ -110,3 +131,11 @@ def get_models():
 def download_model(req: ModelRequest):
     pull_model(req.model)
     return {"status": "downloading", "model": req.model}
+
+@app.post("/rag/add")
+def add_rag_doc(req: RAGRequest):
+    try:
+        chunks = rag_manager.add_document(req.file_path)
+        return {"chunks": chunks}
+    except Exception as e:
+        return {"error": str(e)}

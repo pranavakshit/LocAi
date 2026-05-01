@@ -138,6 +138,7 @@ def main():
 
     server_process = None
     ollama_process = None
+    exit_code = 1
 
     try:
         # Start Ollama if it isn't running
