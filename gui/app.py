@@ -245,7 +245,9 @@ class LocAiWindow(QMainWindow):
 # 🚀 Entry
 # -----------------------
 def run_gui():
-    app = QApplication(sys.argv)
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
 
     app.setStyleSheet("""
     QMainWindow { background-color: #1e1e1e; }
