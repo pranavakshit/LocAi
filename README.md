@@ -13,6 +13,10 @@ Started as a simple idea: run a local model and talk to it.
 * Model switching (persistent)
 * Automatic model download
 * GPU acceleration (via Ollama)
+* **Local RAG Memory**: Intelligent vector-based document retrieval using ChromaDB.
+* **Multi-Format Ingestion**: Drag and drop PDFs, Word Docs, Text, Markdown, CSV, JSON, Python, and HTML directly into the UI.
+* **System Tray Integration**: Gracefully runs in the background. Minimize to tray instead of quitting.
+* **Process Lifecycle Control**: Real-time animated status buttons that let you start, monitor, and stop the backend and Ollama directly from the UI.
 
 ## Structure
 
