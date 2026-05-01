@@ -1,11 +1,12 @@
 import sys
 import requests
+import markdown
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout,
     QTextEdit, QLineEdit, QPushButton,
-    QLabel
+    QLabel, QComboBox
 )
 
 from PySide6.QtCore import QThread, Signal, QTimer
@@ -54,7 +55,7 @@ class LocAiWindow(QMainWindow):
 
         # --- Top bar ---
         top = QHBoxLayout()
-        self.model_input = QLineEdit()
+        self.model_input = QComboBox()
         self.load_btn = QPushButton("Load")
         self.set_btn = QPushButton("Set")
 
@@ -74,14 +75,20 @@ class LocAiWindow(QMainWindow):
         bottom = QHBoxLayout()
         self.input_field = QLineEdit()
         self.send_btn = QPushButton("Send")
+        self.stop_btn = QPushButton("Stop")
+        self.clear_btn = QPushButton("Clear")
 
         bottom.addWidget(self.input_field)
         bottom.addWidget(self.send_btn)
+        bottom.addWidget(self.stop_btn)
+        bottom.addWidget(self.clear_btn)
 
         layout.addLayout(bottom)
 
         # --- Connections ---
         self.send_btn.clicked.connect(self.send_message)
+        self.stop_btn.clicked.connect(self.stop_generation)
+        self.clear_btn.clicked.connect(self.clear_chat)
         self.input_field.returnPressed.connect(self.send_message)
         self.load_btn.clicked.connect(self.load_model)
         self.set_btn.clicked.connect(self.set_model)
@@ -101,6 +108,9 @@ class LocAiWindow(QMainWindow):
 
         self.chat_history = []
         self.current_ai_response = ""
+        self.stream_role = "assistant"
+        self.needs_render = False
+        self.stop_requested = False
 
         self.load_model()
 
@@ -114,12 +124,6 @@ class LocAiWindow(QMainWindow):
 
         self.input_field.clear()
 
-        self.chat_box.append(f"<b style='color:#4fc3f7'>You:</b> {msg}")
-
-        # Start AI line
-        self.chat_box.append("<b style='color:#81c784'>AI:</b> ")
-        self.ai_cursor = self.chat_box.textCursor()
-
         # Start thinking animation
         self.thinking_active = True
         self.thinking_index = 0
@@ -127,6 +131,9 @@ class LocAiWindow(QMainWindow):
 
         self.chat_history.append({"role": "user", "content": msg})
         self.current_ai_response = ""
+        self.stream_role = "assistant"
+        self.stop_requested = False
+        self.render_chat()
 
         def task():
             res = requests.post(
@@ -136,6 +143,9 @@ class LocAiWindow(QMainWindow):
             )
 
             for chunk in res.iter_content(chunk_size=32):
+                if self.stop_requested:
+                    res.close()
+                    break
                 if chunk:
                     yield chunk.decode("utf-8")
 
@@ -145,10 +155,14 @@ class LocAiWindow(QMainWindow):
         self.worker.finished.connect(self.on_ai_finished)
         self.worker.start()
 
+    def stop_generation(self):
+        self.stop_requested = True
+
     def on_ai_finished(self):
         if self.current_ai_response:
-            self.chat_history.append({"role": "assistant", "content": self.current_ai_response})
+            self.chat_history.append({"role": self.stream_role, "content": self.current_ai_response})
             self.current_ai_response = ""
+            self.render_chat()
 
     # -----------------------
     # 🤖 Thinking animation
@@ -159,71 +173,86 @@ class LocAiWindow(QMainWindow):
 
         state = self.thinking_states[self.thinking_index]
         self.thinking_index = (self.thinking_index + 1) % len(self.thinking_states)
-
-        cursor = self.chat_box.textCursor()
-        cursor.movePosition(QTextCursor.End)
-
-        # remove last thinking dots
-        cursor.select(QTextCursor.LineUnderCursor)
-        line = cursor.selectedText()
-
-        if "AI:" in line:
-            cursor.removeSelectedText()
-            cursor.insertText(f"AI: {state}")
-
-        self.chat_box.setTextCursor(cursor)
+        self.render_chat(thinking_state=state)
 
     def stop_thinking(self):
         self.thinking_active = False
         self.thinking_timer.stop()
-
-        # Clear dots and prepare for real text
-        cursor = self.chat_box.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        cursor.select(QTextCursor.LineUnderCursor)
-        cursor.removeSelectedText()
-        cursor.insertText("AI: ")
-
-        self.chat_box.setTextCursor(cursor)
+        self.render_chat()
 
     # -----------------------
-    # 🧠 Streaming buffer
+    # 🧠 Stateful Rendering
     # -----------------------
     def enqueue_text(self, text):
-        self.buffer += text
         self.current_ai_response += text
+        self.needs_render = True
 
     def flush_buffer(self):
-        if not self.buffer:
-            return
+        if self.needs_render:
+            self.render_chat()
+            self.needs_render = False
 
-        chunk_size = max(1, len(self.buffer) // 8)
-
-        text = self.buffer[:chunk_size]
-        self.buffer = self.buffer[chunk_size:]
-
-        cursor = self.chat_box.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        cursor.insertText(text)
-        self.chat_box.setTextCursor(cursor)
-        self.chat_box.ensureCursorVisible()
+    def render_chat(self, thinking_state=""):
+        html = "<style>code { background-color: #333; padding: 2px 4px; border-radius: 4px; font-family: Consolas; } pre { background-color: #2b2b2b; padding: 10px; border-radius: 6px; } table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #555; padding: 8px; }</style>"
+        
+        for msg in self.chat_history:
+            if msg["role"] == "user":
+                html += f"<b style='color:#4fc3f7'>You:</b><br>{msg['content']}<br><br>"
+            elif msg["role"] == "assistant":
+                md_html = markdown.markdown(msg["content"], extensions=['fenced_code', 'tables'])
+                html += f"<b style='color:#81c784'>AI:</b><br>{md_html}<br><br>"
+            elif msg["role"] == "system":
+                html += f"<b style='color:#bbb'>[System]</b> {msg['content'].replace(chr(10), '<br>')}<br><br>"
+                
+        if self.current_ai_response:
+            if self.stream_role == "assistant":
+                md_html = markdown.markdown(self.current_ai_response, extensions=['fenced_code', 'tables'])
+                html += f"<b style='color:#81c784'>AI:</b><br>{md_html}<br><br>"
+            elif self.stream_role == "system":
+                html += f"<b style='color:#bbb'>[System]</b> {self.current_ai_response.replace(chr(10), '<br>')}<br><br>"
+        elif self.thinking_active:
+            html += f"<b style='color:#81c784'>AI:</b> {thinking_state}<br><br>"
+            
+        vbar = self.chat_box.verticalScrollBar()
+        scroll_pos = vbar.value()
+        at_bottom = scroll_pos == vbar.maximum()
+        
+        self.chat_box.setHtml(html)
+        
+        if at_bottom:
+            vbar.setValue(vbar.maximum())
+        else:
+            vbar.setValue(scroll_pos)
 
     # -----------------------
     # 🧠 Model handling
     # -----------------------
     def load_model(self):
         try:
+            # Load list of available models
+            models_res = requests.get(f"{API}/models")
+            models = models_res.json().get("models", [])
+            self.model_input.clear()
+            self.model_input.addItems(models)
+            self.model_input.setEditable(True)  # Allow typing new models to pull
+            
+            # Load currently active model
             res = requests.get(f"{API}/model")
-            self.model_input.setText(res.json()["model"])
+            current_model = res.json()["model"]
+            self.model_input.setCurrentText(current_model)
         except Exception as e:
-            self.chat_box.append(f"Error loading model: {e}")
+            self.chat_history.append({"role": "system", "content": f"Error loading model: {e}"})
+            self.render_chat()
 
     def set_model(self):
-        model = self.model_input.text().strip()
+        model = self.model_input.currentText().strip()
         if not model:
             return
 
-        self.chat_box.append(f"\nSwitching to model: {model}...\n")
+        self.current_ai_response = f"Switching to model: {model}...\n"
+        self.stream_role = "system"
+        self.stop_requested = False
+        self.render_chat()
 
         def task():
             res = requests.post(
@@ -233,12 +262,21 @@ class LocAiWindow(QMainWindow):
             )
 
             for line in res.iter_lines():
+                if self.stop_requested:
+                    res.close()
+                    break
                 if line:
                     yield line.decode("utf-8") + "\n"
 
         self.worker = StreamWorker(task)
         self.worker.chunk_received.connect(self.enqueue_text)
         self.worker.start()
+
+    def clear_chat(self):
+        self.chat_history = []
+        self.current_ai_response = ""
+        self.chat_history.append({"role": "system", "content": "Chat history cleared. Memory wiped."})
+        self.render_chat()
 
 
 # -----------------------

@@ -4,3 +4,5 @@ pydantic
 requests
 PySide6
 pyinstaller
+
+markdown
