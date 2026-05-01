@@ -20,7 +20,7 @@ class ModelRequest(BaseModel):
 
 def get_model():
     if not os.path.exists(CONFIG_FILE):
-        return "gemma:latest"
+        return "gemma4:e2b"
 
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)["model"]
