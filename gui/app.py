@@ -485,20 +485,21 @@ class LocAiWindow(QMainWindow):
             self.btn_ollama.set_target(1.0)
             self.btn_ollama.setText("Ollama: Running")
         except requests.exceptions.RequestException:
-            # If target is 0.5, we are actively starting up, don't drop to 0.0 yet
-            if self.btn_ollama.target_progress != 0.5:
+            if self.btn_ollama.target_progress <= 0.0 or self.btn_ollama.target_progress >= 1.0:
                 self.btn_ollama.set_target(0.0)
-            self.btn_ollama.setText("Ollama: Stopped")
+                self.btn_ollama.setText("Ollama: Stopped")
 
         # Check API Server
         try:
             requests.get("http://127.0.0.1:8000/health", timeout=0.2)
-            self.btn_backend.set_target(1.0)
-            self.btn_backend.setText("API Server: Running")
+            if self.btn_backend.target_progress < 1.0:
+                self.btn_backend.set_target(1.0)
+                self.btn_backend.setText("API Server: Running")
+                self.load_model()
         except requests.exceptions.RequestException:
-            if self.btn_backend.target_progress != 0.5:
+            if self.btn_backend.target_progress <= 0.0 or self.btn_backend.target_progress >= 1.0:
                 self.btn_backend.set_target(0.0)
-            self.btn_backend.setText("API Server: Stopped")
+                self.btn_backend.setText("API Server: Stopped")
 
     def toggle_ollama(self):
         import subprocess
@@ -561,7 +562,15 @@ class LocAiWindow(QMainWindow):
             # Disable signal handlers so it can run outside the main thread
             self.backend_server.install_signal_handlers = lambda: None 
             
-            self.backend_thread = threading.Thread(target=self.backend_server.run, daemon=True)
+            def run_server_safely():
+                try:
+                    self.backend_server.run()
+                except Exception as e:
+                    import traceback
+                    with open("backend_crash.log", "w") as f:
+                        f.write(traceback.format_exc())
+            
+            self.backend_thread = threading.Thread(target=run_server_safely, daemon=True)
             self.backend_thread.start()
             
         if not force_start:
