@@ -21,6 +21,7 @@ API = "http://localhost:8000"
 class UvicornLogSignals(QObject):
     progress_update = Signal(float)
     text_update = Signal(str)
+    server_ready = Signal()
 
 class UvicornLogHandler(logging.Handler):
     def __init__(self, signals):
@@ -38,6 +39,7 @@ class UvicornLogHandler(logging.Handler):
         if "Uvicorn running" in msg:
             self.signals.progress_update.emit(1.0)
             self.signals.text_update.emit("API Server: Running")
+            self.signals.server_ready.emit()
         if "Shutting down" in msg:
             self.signals.progress_update.emit(0.7)
             self.signals.text_update.emit("Server: Stopping...")
@@ -239,8 +241,7 @@ class LocAiWindow(QMainWindow):
         
         self.uvicorn_signals.progress_update.connect(self.btn_backend.set_target)
         self.uvicorn_signals.text_update.connect(self.btn_backend.setText)
-
-        self.load_model()
+        self.uvicorn_signals.server_ready.connect(self.load_model)
         
         # Start backend automatically
         QTimer.singleShot(100, lambda: self.toggle_backend(force_start=True))
