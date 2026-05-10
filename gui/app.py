@@ -147,6 +147,7 @@ class LocAiWindow(QMainWindow):
         self.btn_ollama = ProgressButton("Ollama")
         self.btn_backend = ProgressButton("API Server")
         self.model_input = QComboBox()
+        self.load_btn = QPushButton("Load")
         self.set_btn = QPushButton("Set")
         self.upload_btn = QPushButton("📁 Upload File")
         self.quit_app_btn = QPushButton("❌ Quit")
@@ -156,6 +157,7 @@ class LocAiWindow(QMainWindow):
         top.addWidget(self.btn_backend)
         top.addWidget(QLabel(" | Model:"))
         top.addWidget(self.model_input)
+        top.addWidget(self.load_btn)
         top.addWidget(self.set_btn)
         top.addWidget(self.upload_btn)
         top.addWidget(self.quit_app_btn)
@@ -188,6 +190,7 @@ class LocAiWindow(QMainWindow):
         self.stop_btn.clicked.connect(self.stop_generation)
         self.clear_btn.clicked.connect(self.clear_chat)
         self.input_field.returnPressed.connect(self.send_message)
+        self.load_btn.clicked.connect(self.load_model)
         self.set_btn.clicked.connect(self.set_model)
         self.upload_btn.clicked.connect(self.upload_document)
         self.quit_app_btn.clicked.connect(self.quit_app)
@@ -400,14 +403,14 @@ class LocAiWindow(QMainWindow):
     def load_model(self, retries=5):
         try:
             # Load list of available models
-            models_res = requests.get(f"{API}/models", timeout=1)
+            models_res = requests.get(f"{API}/models", timeout=3)
             models = models_res.json().get("models", [])
             self.model_input.clear()
             self.model_input.addItems(models)
             self.model_input.setEditable(True)  # Allow typing new models to pull
             
             # Load currently active model
-            res = requests.get(f"{API}/model", timeout=1)
+            res = requests.get(f"{API}/model", timeout=3)
             current_model = res.json()["model"]
             self.model_input.setCurrentText(current_model)
         except Exception as e:
