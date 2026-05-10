@@ -538,7 +538,8 @@ class LocAiWindow(QMainWindow):
                 logger.addHandler(handler)
             
             # Start Uvicorn in a daemon thread
-            config = uvicorn.Config("core.server:app", host="127.0.0.1", port=8000, log_level="info", loop="asyncio")
+            from core.server import app as fastapi_app
+            config = uvicorn.Config(fastapi_app, host="127.0.0.1", port=8000, log_level="info", loop="asyncio")
             self.backend_server = uvicorn.Server(config)
             
             # Disable signal handlers so it can run outside the main thread
