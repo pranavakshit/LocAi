@@ -16,7 +16,7 @@ def get_single_instance_lock():
     """
     lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        lock_socket.bind(("127.0.0.1", 56789))
+        lock_socket.bind(("127.0.0.1", 58789))
         return lock_socket
     except OSError:
         return None
