@@ -233,6 +233,7 @@ class LocAiWindow(QMainWindow):
         self.thinking_active = False
 
         self.chat_history = []
+        self.rendered_history_html = ""
         self.current_ai_response = ""
         self.stream_role = "assistant"
         self.needs_render = False
@@ -296,6 +297,7 @@ class LocAiWindow(QMainWindow):
         self.thinking_timer.start(300)
 
         self.chat_history.append({"role": "user", "content": msg})
+        self.rebuild_history_html()
         self.current_ai_response = ""
         self.stream_role = "assistant"
         self.stop_requested = False
@@ -308,7 +310,7 @@ class LocAiWindow(QMainWindow):
                 stream=True
             )
 
-            for chunk in res.iter_content(chunk_size=32):
+            for chunk in res.iter_content(chunk_size=1):
                 if self.stop_requested:
                     res.close()
                     break
@@ -328,6 +330,7 @@ class LocAiWindow(QMainWindow):
         if self.current_ai_response:
             self.chat_history.append({"role": self.stream_role, "content": self.current_ai_response})
             self.current_ai_response = ""
+            self.rebuild_history_html()
             self.render_chat()
 
     # -----------------------
@@ -358,9 +361,8 @@ class LocAiWindow(QMainWindow):
             self.render_chat()
             self.needs_render = False
 
-    def render_chat(self, thinking_state=""):
-        html = "<style>code { background-color: #333; padding: 2px 4px; border-radius: 4px; font-family: Consolas; } pre { background-color: #2b2b2b; padding: 10px; border-radius: 6px; } table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #555; padding: 8px; }</style>"
-        
+    def rebuild_history_html(self):
+        html = ""
         for msg in self.chat_history:
             if msg["role"] == "user":
                 html += f"<b style='color:#4fc3f7'>You:</b><br>{msg['content']}<br><br>"
@@ -369,6 +371,11 @@ class LocAiWindow(QMainWindow):
                 html += f"<b style='color:#81c784'>AI:</b><br>{md_html}<br><br>"
             elif msg["role"] == "system":
                 html += f"<b style='color:#bbb'>[System]</b> {msg['content'].replace(chr(10), '<br>')}<br><br>"
+        self.rendered_history_html = html
+
+    def render_chat(self, thinking_state=""):
+        html = "<style>code { background-color: #333; padding: 2px 4px; border-radius: 4px; font-family: Consolas; } pre { background-color: #2b2b2b; padding: 10px; border-radius: 6px; } table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #555; padding: 8px; }</style>"
+        html += self.rendered_history_html
                 
         if self.current_ai_response:
             if self.stream_role == "assistant":
@@ -408,6 +415,7 @@ class LocAiWindow(QMainWindow):
             self.model_input.setCurrentText(current_model)
         except Exception as e:
             self.chat_history.append({"role": "system", "content": f"Error loading model: {e}"})
+            self.rebuild_history_html()
             self.render_chat()
 
     def set_model(self):
@@ -537,6 +545,14 @@ class LocAiWindow(QMainWindow):
                 handler = UvicornLogHandler(self.uvicorn_signals)
                 logger.addHandler(handler)
             
+            # Disable sys.stdout output for PyInstaller frozen environment to prevent Uvicorn crash
+            import os
+            if getattr(sys, 'frozen', False):
+                if sys.stdout is None:
+                    sys.stdout = open(os.devnull, "w")
+                if sys.stderr is None:
+                    sys.stderr = open(os.devnull, "w")
+                    
             # Start Uvicorn in a daemon thread
             from core.server import app as fastapi_app
             config = uvicorn.Config(fastapi_app, host="127.0.0.1", port=8000, log_level="info", loop="asyncio")
@@ -555,6 +571,7 @@ class LocAiWindow(QMainWindow):
         self.chat_history = []
         self.current_ai_response = ""
         self.chat_history.append({"role": "system", "content": "Chat history cleared. Memory wiped."})
+        self.rebuild_history_html()
         self.render_chat()
 
 
