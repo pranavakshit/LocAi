@@ -1,6 +1,9 @@
 import sys
 import requests
 import markdown
+import logging
+import threading
+import uvicorn
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
@@ -9,10 +12,39 @@ from PySide6.QtWidgets import (
     QLabel, QComboBox, QSystemTrayIcon, QMenu, QStyle
 )
 
-from PySide6.QtCore import QThread, Signal, QTimer, QProcess
+from PySide6.QtCore import QObject, QThread, Signal, QTimer, QProcess
 from PySide6.QtGui import QTextCursor
 
 API = "http://localhost:8000"
+
+
+class UvicornLogSignals(QObject):
+    progress_update = Signal(float)
+    text_update = Signal(str)
+
+class UvicornLogHandler(logging.Handler):
+    def __init__(self, signals):
+        super().__init__()
+        self.signals = signals
+
+    def emit(self, record):
+        msg = self.format(record)
+        if "Started server process" in msg:
+            self.signals.progress_update.emit(0.3)
+        if "Waiting for application startup" in msg:
+            self.signals.progress_update.emit(0.6)
+        if "Application startup complete" in msg:
+            self.signals.progress_update.emit(0.8)
+        if "Uvicorn running" in msg:
+            self.signals.progress_update.emit(1.0)
+            self.signals.text_update.emit("API Server: Running")
+        if "Shutting down" in msg:
+            self.signals.progress_update.emit(0.7)
+            self.signals.text_update.emit("Server: Stopping...")
+        if "Waiting for background tasks" in msg:
+            self.signals.progress_update.emit(0.4)
+        if "Finished server process" in msg:
+            self.signals.progress_update.emit(0.0)
 
 
 class StreamWorker(QThread):
@@ -89,10 +121,13 @@ class ProgressButton(QPushButton):
 
 
 class LocAiWindow(QMainWindow):
-    def __init__(self, ollama_proc=None, server_proc=None):
+    def __init__(self, ollama_proc=None):
         super().__init__()
         self.ollama_proc = ollama_proc
-        self.server_proc = server_proc
+        self.backend_server = None
+        self.backend_thread = None
+        
+        self.uvicorn_signals = UvicornLogSignals()
 
         self.setWindowTitle("LocAi")
         self.setMinimumSize(800, 600)
@@ -201,8 +236,14 @@ class LocAiWindow(QMainWindow):
         self.needs_render = False
         self.stop_requested = False
         self.is_quitting = False
+        
+        self.uvicorn_signals.progress_update.connect(self.btn_backend.set_target)
+        self.uvicorn_signals.text_update.connect(self.btn_backend.setText)
 
         self.load_model()
+        
+        # Start backend automatically
+        QTimer.singleShot(100, lambda: self.toggle_backend(force_start=True))
 
     def closeEvent(self, event):
         if self.is_quitting:
@@ -230,9 +271,8 @@ class LocAiWindow(QMainWindow):
     def quit_app(self):
         self.is_quitting = True
         # Gracefully shut down background processes before quitting
-        if self.server_proc:
-            self.server_proc.terminate()
-            self.server_proc.waitForFinished(1000)
+        if self.backend_server:
+            self.backend_server.should_exit = True
         if self.ollama_proc:
             self.ollama_proc.kill()
             self.ollama_proc.waitForFinished(1000)
@@ -478,58 +518,36 @@ class LocAiWindow(QMainWindow):
             self.btn_ollama.set_target(1.0)
             self.btn_ollama.setText("Ollama: Running")
 
-    def toggle_backend(self):
-        import subprocess, sys, os
+    def toggle_backend(self, force_start=False):
         try:
             requests.get("http://127.0.0.1:8000/health", timeout=0.5)
             # Running -> Stop it
-            if self.server_proc:
-                self.server_proc.terminate() # triggers graceful shutdown logs
-            else:
-                self.btn_backend.set_target(0.0)
-                subprocess.run('FOR /F "tokens=5" %a in (\'netstat -ano ^| findstr :8000\') do taskkill /F /PID %a', shell=True)
+            if not force_start and self.backend_server:
+                self.backend_server.should_exit = True
+                self.backend_server = None
         except requests.exceptions.RequestException:
             # Stopped -> Start it
             self.btn_backend.set_target(0.1)  # Initialize
             self.btn_backend.setText("Server: Booting...")
-            cmd = "--server"
-            exe = sys.executable
-            if not getattr(sys, 'frozen', False):
-                cmd = os.path.abspath("launcher.py")
-                args = [cmd, "--server"]
-            else:
-                args = ["--server"]
             
-            self.server_proc = QProcess()
-            self.server_proc.readyReadStandardOutput.connect(self.handle_server_stdout)
-            self.server_proc.finished.connect(lambda: self.btn_backend.set_target(0.0))
-            self.server_proc.start(exe, args)
-        self.check_status()
-
-    def handle_server_stdout(self):
-        if not self.server_proc: return
-        data = self.server_proc.readAllStandardOutput().data().decode()
-        
-        # Real-time Startup Progress
-        if "Started server process" in data:
-            self.btn_backend.set_target(0.3)
-        if "Waiting for application startup" in data:
-            self.btn_backend.set_target(0.6)
-        if "Application startup complete" in data:
-            self.btn_backend.set_target(0.8)
-        if "Uvicorn running" in data:
-            self.btn_backend.set_target(1.0)
-            self.btn_backend.setText("API Server: Running")
-
-        # Real-time Shutdown Progress
-        if "Shutting down" in data:
-            self.btn_backend.set_target(0.7)
-            self.btn_backend.setText("Server: Stopping...")
-        if "Waiting for background tasks" in data:
-            self.btn_backend.set_target(0.4)
-        if "Finished server process" in data:
-            self.btn_backend.set_target(0.0)
-            self.server_proc = None
+            # Attach to uvicorn logger if not already attached
+            logger = logging.getLogger("uvicorn.error")
+            if not any(isinstance(h, UvicornLogHandler) for h in logger.handlers):
+                handler = UvicornLogHandler(self.uvicorn_signals)
+                logger.addHandler(handler)
+            
+            # Start Uvicorn in a daemon thread
+            config = uvicorn.Config("core.server:app", host="127.0.0.1", port=8000, log_level="info", loop="asyncio")
+            self.backend_server = uvicorn.Server(config)
+            
+            # Disable signal handlers so it can run outside the main thread
+            self.backend_server.install_signal_handlers = lambda: None 
+            
+            self.backend_thread = threading.Thread(target=self.backend_server.run, daemon=True)
+            self.backend_thread.start()
+            
+        if not force_start:
+            self.check_status()
 
     def clear_chat(self):
         self.chat_history = []
@@ -541,7 +559,7 @@ class LocAiWindow(QMainWindow):
 # -----------------------
 # 🚀 Entry
 # -----------------------
-def run_gui(ollama_proc=None, server_proc=None):
+def run_gui(ollama_proc=None):
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
@@ -573,7 +591,7 @@ def run_gui(ollama_proc=None, server_proc=None):
     QLabel { color: #cccccc; }
     """)
 
-    window = LocAiWindow(ollama_proc, server_proc)
+    window = LocAiWindow(ollama_proc)
     window.show()
     return app.exec()
 
