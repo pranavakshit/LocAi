@@ -99,25 +99,36 @@ def change_model(req: ModelRequest):
 
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
-    model = get_model()
+    try:
+        model = get_model()
 
-    # RAG injection
-    user_query = req.messages[-1]["content"] if req.messages and req.messages[-1]["role"] == "user" else ""
-    if user_query:
-        rag_results = rag_manager.query(user_query)
-        if rag_results:
-            context = "\n\n".join(rag_results)
-            system_msg = f"Use the following retrieved document snippets to answer the user's question. If the snippets are not relevant, ignore them and answer normally.\n\n--- LOCAL FILE CONTEXT ---\n{context}\n--------------------"
-            
-            # Insert system message at the top
-            req.messages.insert(0, {"role": "system", "content": system_msg})
+        # RAG injection
+        try:
+            user_query = req.messages[-1]["content"] if req.messages and req.messages[-1]["role"] == "user" else ""
+            if user_query:
+                rag_results = rag_manager.query(user_query)
+                if rag_results:
+                    context = "\n\n".join(rag_results)
+                    system_msg = f"Use the following retrieved document snippets to answer the user's question. If the snippets are not relevant, ignore them and answer normally.\n\n--- LOCAL FILE CONTEXT ---\n{context}\n--------------------"
+                    
+                    # Insert system message at the top
+                    req.messages.insert(0, {"role": "system", "content": system_msg})
+        except Exception as e:
+            # If RAG fails, we still want the chat to work
+            import logging
+            logging.error(f"RAG Error: {e}")
 
-    def generator():
-        for token in chat_stream(model, req.messages):
-            yield token
-            yield ""  # 🔥 forces flush
+        def generator():
+            for token in chat_stream(model, req.messages):
+                yield token
+                yield ""  # 🔥 forces flush
 
-    return StreamingResponse(generator(), media_type="text/plain")
+        return StreamingResponse(generator(), media_type="text/plain")
+    except Exception as e:
+        import traceback
+        def error_gen():
+            yield f"[Fatal Internal Server Error]: {e}\n\n{traceback.format_exc()}"
+        return StreamingResponse(error_gen(), media_type="text/plain")
 
 @app.get("/health")
 def health_check():

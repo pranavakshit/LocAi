@@ -3,15 +3,20 @@
 
 from PyInstaller.utils.hooks import collect_submodules, copy_metadata
 
-hidden_imports = ['uvicorn', 'fastapi', 'chromadb', 'pypdf', 'docx', 'markdown']
+hidden_imports = ['uvicorn', 'fastapi', 'chromadb', 'pypdf', 'docx', 'markdown', 'onnxruntime', 'tokenizers']
 hidden_imports += collect_submodules('chromadb')
 hidden_imports += collect_submodules('uvicorn')
 hidden_imports += collect_submodules('fastapi')
+hidden_imports += collect_submodules('onnxruntime')
+hidden_imports += collect_submodules('tokenizers')
+hidden_imports += collect_submodules('opentelemetry')
 
 all_datas = [('core', 'core'), ('gui', 'gui')]
 all_datas += copy_metadata('chromadb')
 all_datas += copy_metadata('fastapi')
 all_datas += copy_metadata('uvicorn')
+all_datas += copy_metadata('onnxruntime')
+all_datas += copy_metadata('tokenizers')
 
 a = Analysis(
     ['launcher.py'],
