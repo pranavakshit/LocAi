@@ -1,21 +1,68 @@
 @startuml
-' Define components
-package "LocAi" {
-  [Server] as server <<Component>>
-  [RAG Manager] as rag <<Component>>
-  [Model Router] as modelRouter <<Component>>
-  [CLI] as cli <<Component>>
-  [GUI] as gui <<Component>>
-  [Launcher] as launcher <<Component>>
+' ==========================================================
+' LocAi Architecture – detailed component view
+' ==========================================================
+' Packages for logical grouping
+package "LocAi Core" {
+  [Server]           as server   <<Component>>
+  [RAG Manager]      as rag      <<Component>>
+  [Model Router]     as model    <<Component>>
+  [CLI]              as cli      <<Component>>
+  [GUI]              as gui      <<Component>>
+  [Launcher]         as launcher <<Component>>
 }
 
-' Relationships
-server --> modelRouter : uses
-server --> rag : utilizes
-cli --> modelRouter : calls
-cli --> server : calls API
-gui --> server : calls API
-launcher --> gui : launches
-launcher --> server : starts
+' ==========================================================
+' Internal data stores
+' ==========================================================
+node "ChromaDB\n(local_rag_db)" as db <<Database>>
+node "Config File\nconfig.json" as cfg <<File>>
+node "Persistent\nCache\n(.venv)" as venv <<Folder>>
+
+' ==========================================================
+' External services
+' ==========================================================
+cloud "Ollama API\nhttp://localhost:11434" as ollama <<Service>>
+cloud "FastAPI HTTP\nPort 8000" as http <<Service>>
+
+' ==========================================================
+' Relationships – API calls & data flow
+' ==========================================================
+server --> model  : uses\nmodel_router.chat_stream()
+server --> rag    : utilizes\nRAGManager.query()
+server --> http   : exposes REST endpoints
+server --> cfg    : reads/writes model config
+
+cli --> http        : POST /model, /chat, /rag/add
+cli --> model       : invokes model_router methods
+gui --> http        : POST /chat, GET /model
+launcher --> gui    : launches GUI process
+launcher --> server : starts FastAPI app
+launcher --> venv   : activates virtual env
+
+model --> ollama    : HTTP POST /chat & /generate
+rag --> db          : add_document(), query()
+db --> rag          : returns document chunks
+
+' ==========================================================
+' Additional notes
+' ==========================================================
+note right of server
+  • FastAPI application
+  • Handles model selection, RAG integration,
+    health checks, and model management
+end note
+
+note right of rag
+  • Handles PDF/DOCX/TXT ingestion
+  • Chunking (1000 chars, 200 overlap)
+  • Stores vectors in ChromaDB
+end note
+
+note right of model
+  • Streams tokens via Ollama chat endpoint
+  • Fallback to generate endpoint
+  • Model list & pull utilities
+end note
 
 @enduml
