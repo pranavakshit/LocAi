@@ -1,0 +1,21 @@
+@startuml
+' Define components
+package "LocAi" {
+  [Server] as server <<Component>>
+  [RAG Manager] as rag <<Component>>
+  [Model Router] as modelRouter <<Component>>
+  [CLI] as cli <<Component>>
+  [GUI] as gui <<Component>>
+  [Launcher] as launcher <<Component>>
+}
+
+' Relationships
+server --> modelRouter : uses
+server --> rag : utilizes
+cli --> modelRouter : calls
+cli --> server : calls API
+gui --> server : calls API
+launcher --> gui : launches
+launcher --> server : starts
+
+@enduml
