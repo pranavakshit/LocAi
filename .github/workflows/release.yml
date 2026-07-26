@@ -42,9 +42,13 @@ jobs:
           npm install
           npm run build
 
-      - name: Build PyInstaller Directory Bundle
+      - name: Build PyInstaller Directory Bundle (for Installer)
         run: |
           pyinstaller --name "LocAi" --onedir --windowed --add-data "ui/dist;ui/dist" launcher.py
+
+      - name: Build PyInstaller Portable Executable
+        run: |
+          pyinstaller --name "LocAi-portable" --onefile --windowed --add-data "ui/dist;ui/dist" launcher.py
 
       - name: Build Inno Setup Installer
         run: |
@@ -93,7 +97,9 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: Output/LocAi-*-installer.exe
+          files: |
+            Output/LocAi-*-installer.exe
+            dist/LocAi-portable.exe
           body: ${{ steps.release_notes.outputs.notes }}
           name: Release ${{ env.TAG_NAME }}
           tag_name: ${{ env.TAG_NAME }}
