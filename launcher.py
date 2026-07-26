@@ -32,23 +32,22 @@ def is_ollama_running():
 
 
 def ensure_ollama_running(dialog=None, app=None):
-    """Starts Ollama if it's not already running. Returns the process object if started."""
+    """Starts Ollama if it's not already running."""
     if is_ollama_running():
         if dialog:
-            dialog.setLabelText("Ollama is already running. Piggybacking.\n(It will NOT be closed when you exit LocAi)")
+            dialog.setLabelText("Ollama is already running. Piggybacking.\n(It will remain running for other clients)")
             app.processEvents()
-            time.sleep(1.5)
-        return None
+            time.sleep(1.0)
+        return
         
     try:
-        # CREATE_NO_WINDOW = 0x08000000
         creationflags = 0x08000000 if os.name == 'nt' else 0
         
         if dialog:
-            dialog.setLabelText("Ollama is not running. Starting Ollama background engine...\n(It will be cleanly exited upon closing LocAi)")
+            dialog.setLabelText("Starting Ollama background engine...")
             app.processEvents()
             
-        process = subprocess.Popen(
+        subprocess.Popen(
             ["ollama", "serve"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -62,28 +61,52 @@ def ensure_ollama_running(dialog=None, app=None):
                 app.processEvents()
                 
             if is_ollama_running():
-                return process
+                return
             time.sleep(0.5)
-            
-        return process
     except FileNotFoundError:
         if dialog:
             dialog.setLabelText("Error: Ollama not found in PATH.\nPlease install Ollama.")
             app.processEvents()
             time.sleep(3)
         print("Ollama not found in PATH. Make sure Ollama is installed.")
-        return None
 
 
 def is_server_running():
     """Checks if the backend API is already running."""
     try:
-        requests.get(API_URL, timeout=1)
+        requests.get(API_URL + "/health", timeout=1)
         return True
     except requests.exceptions.RequestException:
         return False
 
-
+def ensure_runtime_running(dialog=None, app=None):
+    """Starts the LocAi Runtime Platform if it's not already running."""
+    if is_server_running():
+        return
+        
+    try:
+        creationflags = 0x08000000 if os.name == 'nt' else 0
+        
+        if dialog:
+            dialog.setLabelText("Starting LocAi Runtime Platform...")
+            app.processEvents()
+            
+        subprocess.Popen(
+            [sys.executable, "locai-runtime.py"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags
+        )
+        
+        for i in range(10):
+            if dialog:
+                dialog.setValue(50 + (i * 4))
+                app.processEvents()
+            if is_server_running():
+                return
+            time.sleep(0.5)
+    except Exception as e:
+        print(f"Failed to start LocAi Runtime: {e}")
 
 def main():
     """Main application entry point."""
@@ -93,7 +116,9 @@ def main():
         # Another instance is running, exit silently
         sys.exit(0)
         
+    # pyrefly: ignore [missing-import]
     from PySide6.QtWidgets import QApplication, QProgressDialog
+    # pyrefly: ignore [missing-import]
     from PySide6.QtCore import Qt
     
     app = QApplication(sys.argv)
@@ -108,34 +133,29 @@ def main():
     dialog.show()
     app.processEvents()
 
-    server_process = None
-    ollama_process = None
     exit_code = 1
 
     try:
-        # 2. Start Ollama if it isn't running
-        ollama_process = ensure_ollama_running(dialog, app)
+        # 2. Start Ollama and LocAi Runtime as persistent background services
+        ensure_ollama_running(dialog, app)
+        ensure_runtime_running(dialog, app)
 
         dialog.setValue(100)
         dialog.close()
         app.processEvents()
 
-        # 3. Launch GUI in the main process
-        from gui.app import run_gui
-        exit_code = run_gui(ollama_proc=ollama_process)
+        # 3. Launch GUI Client
+        import gui.modern_app
+        gui.modern_app.main()
+        exit_code = 0
 
     except Exception as e:
         print(f"Application Error: {e}")
         exit_code = 1
 
     finally:
-        # 4. Cleanly stop Ollama ONLY if we were the ones who started it
-        if ollama_process:
-            ollama_process.terminate()
-            ollama_process.wait()
-        
+        # 4. Clean Exit (leaving services running for other potential clients)
         sys.exit(exit_code)
-
 
 if __name__ == "__main__":
     main()
