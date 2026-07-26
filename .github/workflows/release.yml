@@ -16,6 +16,9 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -58,13 +61,24 @@ jobs:
           } else {
             echo "notes=Release of LocAi" >> $env:GITHUB_OUTPUT
           }
+          
+      - name: Determine Tag
+        id: get_tag
+        run: |
+          if ('${{ github.ref_type }}' -eq 'tag') {
+            echo "TAG_NAME=${{ github.ref_name }}" >> $env:GITHUB_ENV
+          } else {
+            $latest_tag = git describe --tags --abbrev=0
+            echo "TAG_NAME=$latest_tag" >> $env:GITHUB_ENV
+          }
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: Output/LocAi-installer.exe
           body: ${{ steps.release_notes.outputs.notes }}
-          name: Release ${{ github.ref_name }}
+          name: Release ${{ env.TAG_NAME }}
+          tag_name: ${{ env.TAG_NAME }}
           draft: false
           prerelease: false
         env:
