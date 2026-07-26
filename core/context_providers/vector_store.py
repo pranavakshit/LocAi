@@ -2,12 +2,27 @@ import os
 import chromadb
 from pypdf import PdfReader
 from docx import Document
+from core.context import ContextProvider
 
-class RAGManager:
+class VectorStoreContextProvider(ContextProvider):
+    """
+    Provides context by performing a semantic search over a local ChromaDB instance.
+    (Evolution of the old RAGManager).
+    """
     def __init__(self, db_path="local_rag_db"):
-        self.db_path = db_path
+        # We will use the new userdata/ location for the db_path
+        import os
+        self.db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'userdata', 'local_rag_db'))
         self.client = chromadb.PersistentClient(path=self.db_path)
-        self.collection = self.client.get_or_create_collection(name="locai_docs")
+        # We don't initialize a single collection anymore, we get it dynamically
+        self.default_collection = self.client.get_or_create_collection(name="locai_docs")
+
+    def get_collection(self, project_id: str = None):
+        if not project_id:
+            return self.default_collection
+        # ChromaDB collection names must be valid alphanumeric
+        safe_id = "".join(c if c.isalnum() else "_" for c in project_id)
+        return self.client.get_or_create_collection(name=f"project_{safe_id}")
 
     def read_pdf(self, file_path):
         text = ""
@@ -39,7 +54,7 @@ class RAGManager:
             print(f"Error reading text file: {e}")
             return ""
 
-    def add_document(self, file_path):
+    def add_document(self, file_path, project_id: str = None):
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Could not find file: {file_path}")
 
@@ -66,7 +81,8 @@ class RAGManager:
         ids = [f"{os.path.basename(file_path)}_{i}" for i in range(len(chunks))]
         metadatas = [{"source": file_path} for _ in chunks]
         
-        self.collection.add(
+        collection = self.get_collection(project_id)
+        collection.add(
             documents=chunks,
             metadatas=metadatas,
             ids=ids
@@ -82,14 +98,15 @@ class RAGManager:
             start += chunk_size - overlap
         return chunks
 
-    def query(self, query_text, n_results=3):
+    def get_context(self, query: str, project_id: str = None) -> list[str]:
+        collection = self.get_collection(project_id)
         # Prevent querying empty DB
-        if self.collection.count() == 0:
+        if collection.count() == 0:
             return []
             
-        results = self.collection.query(
-            query_texts=[query_text],
-            n_results=n_results
+        results = collection.query(
+            query_texts=[query],
+            n_results=3
         )
         
         if not results['documents'] or not results['documents'][0]:
