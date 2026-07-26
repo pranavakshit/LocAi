@@ -20,14 +20,14 @@ package "Client Layer" {
 }
 
 package "Runtime & Bootstrapping" {
-  [locai-runtime.py] as runtime <<Daemon>>
-  [launcher.py] as launcher <<Entrypoint>>
+  [LocAi.exe\n(launcher.py)] as launcher <<Dual-Mode Entrypoint>>
+  [System Tray\n(pystray)] as tray <<Component>>
 }
 
 ' ==========================================================
 ' Internal Data Stores
 ' ==========================================================
-database "User Data\n(userdata/)" {
+database "User Data\n(%USERPROFILE%\\LocAi\\userdata\\)" {
   node "projects.json" as projects
   node "sessions.json" as sessions
   node "local_rag_db\n(ChromaDB)" as db
@@ -41,8 +41,8 @@ cloud "Ollama API\nhttp://localhost:11434" as ollama <<Service>>
 ' ==========================================================
 ' Relationships – Execution Flow
 ' ==========================================================
-launcher --> runtime : Starts headless background daemon
-launcher --> gui : Starts Native Window
+launcher --> tray : Spawns Background Daemon
+launcher --> gui : Starts Native Window (if UI mode)
 
 gui --> react : Renders web assets
 react --> server : HTTP/WebSocket (Port 8000)
