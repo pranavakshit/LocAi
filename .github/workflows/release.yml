@@ -42,13 +42,9 @@ jobs:
           npm install
           npm run build
 
-      - name: Build PyInstaller Directory Bundle (for Installer)
+      - name: Build Executables (Installer Bundle & Portable)
         run: |
-          pyinstaller --name "LocAi" --onedir --windowed --add-data "ui/dist;ui/dist" launcher.py
-
-      - name: Build PyInstaller Portable Executable
-        run: |
-          pyinstaller --name "LocAi-portable" --onefile --windowed --add-data "ui/dist;ui/dist" launcher.py
+          pyinstaller --clean --noconfirm LocAi.spec
 
       - name: Build Inno Setup Installer
         run: |
