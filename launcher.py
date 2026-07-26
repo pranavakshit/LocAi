@@ -130,10 +130,22 @@ def run_ui():
         dialog.setWindowTitle("LocAi Startup")
         dialog.setWindowModality(Qt.WindowModal)
         dialog.setCancelButton(None)
+        dialog.setMinimumDuration(0)
         dialog.show()
         
-        for i in range(20):
-            dialog.setValue(i * 5)
+        # Step 1: Wait for Ollama
+        dialog.setLabelText("Starting Ollama Engine...")
+        for i in range(40):  # 20 seconds max
+            dialog.setValue(i)
+            app.processEvents()
+            if is_ollama_running():
+                break
+            time.sleep(0.5)
+            
+        # Step 2: Wait for API Server
+        dialog.setLabelText("Starting LocAi API Server...")
+        for i in range(40, 100):  # 30 seconds max
+            dialog.setValue(i)
             app.processEvents()
             if is_server_running():
                 break
