@@ -24,6 +24,8 @@ Thumbs.db
 build/
 dist/
 *.spec
+ui/node_modules/
+ui/dist/
 
 # Virtual Env
 .venv/
@@ -32,3 +34,7 @@ dist/
 local_rag_db/
 
 RELEASE_NOTES.md
+LOCAI_PROJECT_AUDIT.md
+
+# User Data
+userdata/
