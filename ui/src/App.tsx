@@ -960,6 +960,12 @@ function ProjectsView() {
 function SettingsView() {
   const [apiKey, setApiKey] = useState('sk-ant-••••••••••••••••••••••••••••••••')
   const [systemPrompt, setSystemPrompt] = useState('You are a senior data scientist specializing in time series analysis and anomaly detection. Provide precise, technically rigorous answers with supporting evidence.')
+  const [updateFreq, setUpdateFreq] = useState(() => localStorage.getItem('locai_update_frequency') || 'monthly')
+
+  const handleSave = () => {
+    localStorage.setItem('locai_update_frequency', updateFreq)
+    alert("Settings saved!")
+  }
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 24, background: 'var(--bg)' }}>
@@ -976,6 +982,11 @@ function SettingsView() {
             section: 'Model defaults', fields: [
               { label: 'System prompt', value: systemPrompt, onChange: setSystemPrompt, mono: false, multiline: true },
             ]
+          },
+          {
+            section: 'Updates', fields: [
+              { label: 'Check for updates', value: updateFreq, onChange: setUpdateFreq, type: 'select', options: ['1 day', '3 days', '5 days', 'weekly', 'fortnightly', 'monthly'] }
+            ]
           }
         ].map(group => (
           <div key={group.section} style={{ marginBottom: 28 }}>
@@ -983,7 +994,20 @@ function SettingsView() {
             {group.fields.map(field => (
               <div key={field.label} style={{ marginBottom: 14 }}>
                 <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-2)', marginBottom: 6 }}>{field.label}</label>
-                {(field as any).multiline ? (
+                {(field as any).type === 'select' ? (
+                  <select
+                    value={field.value}
+                    onChange={e => field.onChange(e.target.value)}
+                    style={{
+                      width: '100%', padding: '9px 12px',
+                      background: 'var(--surface)', border: '1px solid var(--border)',
+                      borderRadius: 8, outline: 'none', color: 'var(--text-1)',
+                      fontSize: 12.5, fontFamily: 'var(--font-sans)',
+                    }}
+                  >
+                    {(field as any).options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                ) : (field as any).multiline ? (
                   <textarea
                     value={field.value}
                     onChange={e => field.onChange(e.target.value)}
@@ -1018,7 +1042,7 @@ function SettingsView() {
           </div>
         ))}
 
-        <button style={{
+        <button onClick={handleSave} style={{
           padding: '8px 18px', borderRadius: 8, border: 'none',
           background: 'var(--accent)', color: '#fff',
           fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-sans)',
@@ -1211,7 +1235,11 @@ function iconBtnStyle() {
 
 // ─── Root App ──────────────────────────────────────────────────────────────────
 
+const CURRENT_VERSION = "v1.0.0"
+
 export default function App() {
+  const [updateAvailable, setUpdateAvailable] = useState<{version: string, url: string} | null>(null)
+
   const [activeTab, setActiveTab] = useState<Tab>('chat')
   const [activeNav, setActiveNav] = useState<NavSection>('history')
   const [leftCollapsed, setLeftCollapsed] = useState(false)
@@ -1242,6 +1270,30 @@ export default function App() {
       .then(res => res.json())
       .then(data => setSessions(data.sessions || []))
       .catch(console.error)
+      
+    const freqStr = localStorage.getItem('locai_update_frequency') || 'monthly'
+    const lastCheckStr = localStorage.getItem('locai_last_update_check')
+    const lastCheck = lastCheckStr ? parseInt(lastCheckStr) : 0
+    
+    let intervalDays = 30
+    if (freqStr === '1 day') intervalDays = 1
+    else if (freqStr === '3 days') intervalDays = 3
+    else if (freqStr === '5 days') intervalDays = 5
+    else if (freqStr === 'weekly') intervalDays = 7
+    else if (freqStr === 'fortnightly') intervalDays = 14
+    
+    const now = Date.now()
+    if (now - lastCheck > intervalDays * 24 * 60 * 60 * 1000) {
+      fetch("http://localhost:8000/update/check")
+        .then(res => res.json())
+        .then(data => {
+          localStorage.setItem('locai_last_update_check', now.toString())
+          if (data.latest_version && data.latest_version !== CURRENT_VERSION) {
+            setUpdateAvailable({ version: data.latest_version, url: data.url })
+          }
+        })
+        .catch(console.error)
+    }
   }, [])
 
   const loadSession = async (id: string) => {
@@ -1350,6 +1402,12 @@ export default function App() {
       />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         <TabBar activeTab={activeTab} setActiveTab={setActiveTab} rightVisible={rightVisible} onToggleRight={() => setRightVisible(p => !p)} />
+        {updateAvailable && (
+          <div style={{ background: 'var(--accent)', color: 'white', padding: '8px 16px', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <span>A new version <strong>{updateAvailable.version}</strong> is available!</span>
+            <button onClick={() => { if(window.pywebview) (window as any).pywebview.api.open_url(updateAvailable.url) }} style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 12 }}>Download</button>
+          </div>
+        )}
         <div style={{ flex: 1, overflow: 'hidden' }}>
           {activeTab === 'chat' && (
             <ChatView

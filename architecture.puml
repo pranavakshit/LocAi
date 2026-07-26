@@ -1,68 +1,80 @@
 @startuml
 ' ==========================================================
-' LocAi Architecture – detailed component view
+' LocAi Architecture vNext – Capability-Driven Agent Platform
 ' ==========================================================
-' Packages for logical grouping
-package "LocAi Core" {
-  [Server]           as server   <<Component>>
-  [RAG Manager]      as rag      <<Component>>
-  [Model Router]     as model    <<Component>>
-  [CLI]              as cli      <<Component>>
-  [GUI]              as gui      <<Component>>
-  [Launcher]         as launcher <<Component>>
+
+package "LocAi Core (Python Backend)" {
+  [FastAPI Server\n(server.py)]    as server     <<Component>>
+  [Event Bus\n(events.py)]         as eventbus   <<Component>>
+  [Chat Router\n(routers.py)]      as router     <<Component>>
+  [Context Engine\n(context.py)]   as context    <<Component>>
+  [Inference Provider\n(providers.py)] as provider <<Component>>
+  [Data Store\n(store.py)]         as store      <<Component>>
+  [Agent Tools\n(tools.py)]        as tools      <<Component>>
+}
+
+package "Client Layer" {
+  [Native UI Wrapper\n(modern_app.py)] as gui <<pywebview>>
+  [React SPA\n(ui/)] as react <<Frontend>>
+  [CLI] as cli <<Component>>
+}
+
+package "Runtime & Bootstrapping" {
+  [locai-runtime.py] as runtime <<Daemon>>
+  [launcher.py] as launcher <<Entrypoint>>
 }
 
 ' ==========================================================
-' Internal data stores
+' Internal Data Stores
 ' ==========================================================
-node "ChromaDB\n(local_rag_db)" as db <<Database>>
-node "Config File\nconfig.json" as cfg <<File>>
-node "Persistent\nCache\n(.venv)" as venv <<Folder>>
+database "User Data\n(userdata/)" {
+  node "projects.json" as projects
+  node "sessions.json" as sessions
+  node "local_rag_db\n(ChromaDB)" as db
+}
 
 ' ==========================================================
-' External services
+' External Services
 ' ==========================================================
 cloud "Ollama API\nhttp://localhost:11434" as ollama <<Service>>
-cloud "FastAPI HTTP\nPort 8000" as http <<Service>>
 
 ' ==========================================================
-' Relationships – API calls & data flow
+' Relationships – Execution Flow
 ' ==========================================================
-server --> model  : uses\nmodel_router.chat_stream()
-server --> rag    : utilizes\nRAGManager.query()
-server --> http   : exposes REST endpoints
-server --> cfg    : reads/writes model config
+launcher --> runtime : Starts headless background daemon
+launcher --> gui : Starts Native Window
 
-cli --> http        : POST /model, /chat, /rag/add
-cli --> model       : invokes model_router methods
-gui --> http        : POST /chat, GET /model
-launcher --> gui    : launches GUI process
-launcher --> server : starts FastAPI app
-launcher --> venv   : activates virtual env
+gui --> react : Renders web assets
+react --> server : HTTP/WebSocket (Port 8000)
+cli --> server : HTTP Commands
 
-model --> ollama    : HTTP POST /chat & /generate
-rag --> db          : add_document(), query()
-db --> rag          : returns document chunks
+server --> store : Manage Sessions & Projects
+server --> eventbus : Emits API Events
+eventbus <--> router : Subscribes to ChatRequests
+
+router --> context : Gathers context before inference
+context --> db : Queries project vector store
+router --> provider : Streams LLM tokens
+provider --> ollama : Sends generation request
+
+router --> tools : Executes Autonomous Agent Tools (ReAct)
+tools --> store : Edits local filesystem files
+
+store --> projects : Reads/Writes
+store --> sessions : Reads/Writes
 
 ' ==========================================================
-' Additional notes
+' Additional Notes
 ' ==========================================================
-note right of server
-  • FastAPI application
-  • Handles model selection, RAG integration,
-    health checks, and model management
+note right of router
+  • Central Intelligence Hub
+  • Capability-Driven (Injects System Prompts)
+  • Implements ReAct Tool Calling Loop
 end note
 
-note right of rag
-  • Handles PDF/DOCX/TXT ingestion
-  • Chunking (1000 chars, 200 overlap)
-  • Stores vectors in ChromaDB
-end note
-
-note right of model
-  • Streams tokens via Ollama chat endpoint
-  • Fallback to generate endpoint
-  • Model list & pull utilities
+note right of eventbus
+  • Pub/Sub Architecture
+  • Allows plugins/routers to observe tokens
 end note
 
 @enduml

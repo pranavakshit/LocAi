@@ -6,13 +6,19 @@ call npm run build
 cd ..
 
 echo Installing PyInstaller...
-call .venv\Scripts\pip install pyinstaller
+call .venv\Scripts\pip install pyinstaller pystray Pillow
 
 echo Compiling Python Executable...
-REM Compile locai-runtime as a background daemon
-call .venv\Scripts\pyinstaller --name "locai-runtime" --onefile --noconsole locai-runtime.py
+REM Compile launcher.py as a single directory bundle for the installer
+call .venv\Scripts\pyinstaller --name "LocAi" --onedir --windowed --add-data "ui/dist;ui/dist" launcher.py
 
-REM Compile the GUI which will launch the runtime
-call .venv\Scripts\pyinstaller --name "LocAi" --onefile --windowed --add-data "ui/dist;ui/dist" gui/modern_app.py
-
-echo Done! The executables are located in the dist/ folder.
+echo Checking for Inno Setup...
+where iscc >nul 2>nul
+if %ERRORLEVEL% equ 0 (
+    echo Building Installer...
+    iscc LocAi.iss
+    echo Done! Installer is in the Output folder.
+) else (
+    echo Inno Setup (iscc) not found in PATH. Skipping installer build.
+    echo The portable build is located in the dist/ folder.
+)

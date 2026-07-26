@@ -11,8 +11,8 @@ class VectorStoreContextProvider(ContextProvider):
     """
     def __init__(self, db_path="local_rag_db"):
         # We will use the new userdata/ location for the db_path
-        import os
-        self.db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'userdata', 'local_rag_db'))
+        _user_profile = os.environ.get("USERPROFILE", os.path.expanduser("~"))
+        self.db_path = os.path.join(_user_profile, "LocAi", "userdata", "local_rag_db")
         self.client = chromadb.PersistentClient(path=self.db_path)
         # We don't initialize a single collection anymore, we get it dynamically
         self.default_collection = self.client.get_or_create_collection(name="locai_docs")

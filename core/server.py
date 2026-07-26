@@ -212,6 +212,18 @@ def get_session(sess_id: str):
     if sess: return sess
     return {"error": "Session not found"}
 
+@app.get("/update/check")
+def check_update():
+    import requests
+    try:
+        res = requests.get("https://api.github.com/repos/pranavakshit/LocAi/releases/latest", timeout=3)
+        if res.status_code == 200:
+            data = res.json()
+            return {"latest_version": data.get("tag_name"), "url": data.get("html_url")}
+    except Exception:
+        pass
+    return {"latest_version": None}
+
 # Serve the React UI static build in production
 dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ui', 'dist'))
 if os.path.exists(dist_path):

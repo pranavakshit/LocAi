@@ -17,6 +17,10 @@ class Api:
         root.withdraw()
         folder_path = filedialog.askdirectory()
         return folder_path or None
+        
+    def open_url(self, url):
+        import webbrowser
+        webbrowser.open(url)
 
 def main():
     api = Api()
