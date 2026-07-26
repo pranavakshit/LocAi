@@ -68,8 +68,22 @@ jobs:
           if ('${{ github.ref_type }}' -eq 'tag') {
             echo "TAG_NAME=${{ github.ref_name }}" >> $env:GITHUB_ENV
           } else {
-            $latest_tag = git describe --tags --abbrev=0
-            echo "TAG_NAME=$latest_tag" >> $env:GITHUB_ENV
+            $tags = git tag --sort=-creatordate
+            $unused_tag = $null
+            foreach ($tag in $tags) {
+              if ($tag -match '^v') {
+                $response = curl.exe -s -o NUL -w "%{http_code}" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${{ github.repository }}/releases/tags/$tag
+                if ($response -eq '404') {
+                  $unused_tag = $tag
+                  break
+                }
+              }
+            }
+            if (-not $unused_tag) {
+              Write-Error "No unused 'v*' tags found without a release!"
+              exit 1
+            }
+            echo "TAG_NAME=$unused_tag" >> $env:GITHUB_ENV
           }
 
       - name: Publish GitHub Release
