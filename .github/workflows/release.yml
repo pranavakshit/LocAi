@@ -86,10 +86,14 @@ jobs:
             echo "TAG_NAME=$unused_tag" >> $env:GITHUB_ENV
           }
 
+      - name: Rename Installer
+        run: |
+          Move-Item -Path "Output\LocAi-installer.exe" -Destination "Output\LocAi-${{ env.TAG_NAME }}-installer.exe"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: Output/LocAi-installer.exe
+          files: Output/LocAi-*-installer.exe
           body: ${{ steps.release_notes.outputs.notes }}
           name: Release ${{ env.TAG_NAME }}
           tag_name: ${{ env.TAG_NAME }}
