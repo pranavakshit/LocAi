@@ -27,7 +27,7 @@ def main():
     # Create a native desktop window that loads the React UI
     window = webview.create_window(
         title='LocAi Native Studio',
-        url='http://localhost:8443',
+        url='http://localhost:8000/',
         js_api=api,
         width=1400,
         height=900,

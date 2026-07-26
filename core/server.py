@@ -46,9 +46,7 @@ def set_model(model):
     with open(CONFIG_FILE, "w") as f:
         json.dump({"model": model}, f)
 
-@app.get("/")
-def root():
-    return {"status": "LocAi running"}
+
 
 @app.get("/model")
 def current_model():
