@@ -1,24 +1,18 @@
 @echo off
-echo Building LocAi executable using custom spec...
+echo Building React UI...
+cd ui
+call npm install
+call npm run build
+cd ..
 
-:: Check for virtual environment and activate it
-if exist ".venv\Scripts\activate.bat" (
-    call .venv\Scripts\activate.bat
-) else (
-    echo [Warning] Virtual environment not found. Building with system Python.
-)
+echo Installing PyInstaller...
+call .venv\Scripts\pip install pyinstaller
 
-:: Run PyInstaller using the spec file
-pyinstaller --clean --noconfirm LocAi.spec
+echo Compiling Python Executable...
+REM Compile locai-runtime as a background daemon
+call .venv\Scripts\pyinstaller --name "locai-runtime" --onefile --noconsole locai-runtime.py
 
-if %ERRORLEVEL% EQU 0 (
-    echo.
-    echo ==============================================
-    echo BUILD SUCCESSFUL!
-    echo Your new LocAi.exe is waiting in the dist/ folder.
-    echo ==============================================
-) else (
-    echo.
-    echo [Error] Build failed. See logs above.
-)
-pause
+REM Compile the GUI which will launch the runtime
+call .venv\Scripts\pyinstaller --name "LocAi" --onefile --windowed --add-data "ui/dist;ui/dist" gui/modern_app.py
+
+echo Done! The executables are located in the dist/ folder.

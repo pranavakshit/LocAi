@@ -12,6 +12,8 @@ from core.routers import chat_router
 from core.store import store
 
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 app = FastAPI()
 
@@ -209,3 +211,15 @@ def get_session(sess_id: str):
     sess = store.get_session(sess_id)
     if sess: return sess
     return {"error": "Session not found"}
+
+# Serve the React UI static build in production
+dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ui', 'dist'))
+if os.path.exists(dist_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
+    
+    @app.get("/{full_path:path}")
+    def serve_react_app(full_path: str):
+        file_path = os.path.join(dist_path, full_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(dist_path, "index.html"))
