@@ -261,7 +261,7 @@ const NAV_ITEMS: { id: NavSection; label: string; Icon: () => React.ReactElement
   { id: 'config', label: 'Settings', Icon: Ic.Cog },
 ]
 
-function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav }: LeftPanelProps) {
+function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, activeSessionId, onSessionSelect }: LeftPanelProps) {
   const w = collapsed ? 56 : 228
 
   return (
