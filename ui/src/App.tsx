@@ -190,6 +190,11 @@ const Ic = {
       <path d="M6.5 1L7.8 5.2l4.2 1.3-4.2 1.3L6.5 12 5.2 7.8 1 6.5l4.2-1.3L6.5 1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
     </svg>
   ),
+  Attach: () => (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M7 11V4a3 3 0 016 0v7a5 5 0 01-10 0V4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    </svg>
+  ),
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -242,6 +247,9 @@ interface LeftPanelProps {
   onToggle: () => void
   activeNav: NavSection
   setActiveNav: (n: NavSection) => void
+  sessions: any[]
+  activeSessionId: string | null
+  onSessionSelect: (id: string) => void
 }
 
 const NAV_ITEMS: { id: NavSection; label: string; Icon: () => React.ReactElement }[] = [
@@ -323,21 +331,27 @@ function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav }: LeftPanelPr
         {!collapsed && (
           <div style={{ marginTop: 16, borderTop: '1px solid var(--border-soft)', paddingTop: 10 }}>
             <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px 6px', fontFamily: 'var(--font-mono)' }}>Recent</div>
-            {HISTORY.map(h => (
+            {sessions.map(s => (
               <button
-                key={h.id}
+                key={s.id}
+                onClick={() => onSessionSelect(s.id)}
                 style={{
                   display: 'block', width: '100%', textAlign: 'left',
                   padding: '6px 10px', borderRadius: 6, border: 'none',
-                  background: 'transparent', cursor: 'pointer',
-                  color: 'var(--text-2)', fontSize: 12, lineHeight: 1.4,
+                  background: activeSessionId === s.id ? 'var(--surface-2)' : 'transparent',
+                  cursor: 'pointer',
+                  color: activeSessionId === s.id ? 'var(--text-1)' : 'var(--text-2)',
+                  fontSize: 12, lineHeight: 1.4,
                   fontFamily: 'var(--font-sans)', marginBottom: 1,
                 }}
                 onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-1)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-2)' }}
+                onMouseLeave={e => { 
+                  (e.currentTarget as HTMLButtonElement).style.background = activeSessionId === s.id ? 'var(--surface-2)' : 'transparent'; 
+                  (e.currentTarget as HTMLButtonElement).style.color = activeSessionId === s.id ? 'var(--text-1)' : 'var(--text-2)' 
+                }}
               >
-                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.title}</div>
-                <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>{h.time}</div>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || 'Untitled Session'}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>{new Date(s.updated_at).toLocaleDateString()}</div>
               </button>
             ))}
           </div>
@@ -521,7 +535,14 @@ function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef
             }}
           />
           <div style={{ display: 'flex', alignItems: 'center', padding: '6px 10px 10px', gap: 6 }}>
-            <button style={{ ...iconBtnStyle() }}>
+            <button onClick={async () => {
+              if (window.pywebview) {
+                const path = await (window as any).pywebview.api.open_file_dialog()
+                if (path) setInput(prev => prev + `\n[Attached: ${path}]\n`)
+              } else {
+                alert("Native pywebview API not found.")
+              }
+            }} style={{ ...iconBtnStyle() }}>
               <Ic.Attach />
             </button>
             <div style={{ flex: 1 }} />
@@ -865,68 +886,66 @@ function Legend({ color, label }: { color: string; label: string }) {
   )
 }
 
-// ─── Files View ────────────────────────────────────────────────────────────────
+// ─── Projects View ─────────────────────────────────────────────────────────────
 
-function FilesView() {
-  const [docs, setDocs] = useState<string[]>([])
-  const [newDoc, setNewDoc] = useState('')
-  const [indexing, setIndexing] = useState(false)
+function ProjectsView() {
+  const [projects, setProjects] = useState<any[]>([])
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
 
-  const fetchDocs = () => {
-    fetch("http://localhost:8000/rag/list")
+  const fetchProjects = () => {
+    fetch("http://localhost:8000/projects")
       .then(res => res.json())
-      .then(data => setDocs(data.documents || []))
+      .then(data => setProjects(data.projects || []))
       .catch(console.error)
   }
 
   useEffect(() => {
-    fetchDocs()
+    fetchProjects()
   }, [])
 
-  const handleAdd = async () => {
-    if (!newDoc.trim()) return
-    setIndexing(true)
+  const handleCreate = async () => {
     try {
-      const res = await fetch("http://localhost:8000/rag/add", {
+      let folderPath = ""
+      if (window.pywebview) {
+        folderPath = await (window as any).pywebview.api.open_folder_dialog()
+      } else {
+        folderPath = prompt("Enter absolute folder path (Native API not found):") || ""
+      }
+      if (!folderPath) return
+      
+      const name = prompt("Enter project name:") || "New Project"
+      
+      const res = await fetch("http://localhost:8000/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_path: newDoc.trim() })
+        body: JSON.stringify({ name, root_path: folderPath })
       })
       const data = await res.json()
       if (data.error) alert(data.error)
-      else {
-        setNewDoc('')
-        fetchDocs()
-      }
+      else fetchProjects()
     } catch (e) {
-      alert("Failed to index document.")
+      alert("Failed to create project")
     }
-    setIndexing(false)
   }
 
   return (
     <div style={{ padding: 24, background: 'var(--bg)', height: '100%', overflowY: 'auto' }}>
-      <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', marginBottom: 20 }}>RAG Knowledge Base</h2>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, maxWidth: 600 }}>
-        <input 
-          value={newDoc} onChange={e => setNewDoc(e.target.value)}
-          placeholder="Enter absolute file path (e.g., C:\docs\manual.pdf)"
-          style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-1)', fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none' }}
-        />
-        <button onClick={handleAdd} disabled={indexing} style={{ padding: '0 20px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', cursor: indexing ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 500 }}>
-          {indexing ? 'Indexing...' : 'Add to Knowledge'}
-        </button>
-      </div>
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', marginBottom: 20 }}>Projects & Workspaces</h2>
+      <button onClick={handleCreate} style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 500, marginBottom: 24 }}>
+        + Create Project
+      </button>
       <div>
-        <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Indexed Documents ({docs.length})</h3>
-        {docs.length === 0 ? (
-          <div style={{ color: 'var(--text-3)', fontSize: 13 }}>No documents indexed yet.</div>
+        {projects.length === 0 ? (
+          <div style={{ color: 'var(--text-3)', fontSize: 13 }}>No projects found.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 600 }}>
-            {docs.map(doc => (
-              <div key={doc} style={{ padding: '12px 16px', background: 'var(--panel)', borderRadius: 8, border: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            {projects.map(proj => (
+              <div key={proj.id} onClick={() => setActiveProjectId(proj.id)} style={{ padding: '12px 16px', background: activeProjectId === proj.id ? 'var(--accent-dim)' : 'var(--panel)', borderRadius: 8, border: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
                 <span style={{ color: 'var(--accent)' }}><Ic.Folder /></span>
-                <span style={{ fontSize: 13, color: 'var(--text-2)', wordBreak: 'break-all' }}>{doc}</span>
+                <div>
+                  <div style={{ fontSize: 14, color: 'var(--text-1)', fontWeight: 500 }}>{proj.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{proj.root_path}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -1215,6 +1234,28 @@ export default function App() {
 
   const [localModels, setLocalModels] = useState<string[]>([])
   const [recommendedModels, setRecommendedModels] = useState<string[]>([])
+  const [sessions, setSessions] = useState<any[]>([])
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch("http://localhost:8000/sessions")
+      .then(res => res.json())
+      .then(data => setSessions(data.sessions || []))
+      .catch(console.error)
+  }, [])
+
+  const loadSession = async (id: string) => {
+    setActiveSessionId(id)
+    try {
+      const res = await fetch(`http://localhost:8000/sessions/${id}`)
+      const data = await res.json()
+      if (data.history) {
+        setMessages(data.history)
+      }
+    } catch(e) {
+      console.error(e)
+    }
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -1302,7 +1343,11 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)', fontFamily: 'var(--font-sans)' }}>
-      <LeftPanel collapsed={leftCollapsed} onToggle={() => setLeftCollapsed(p => !p)} activeNav={activeNav} setActiveNav={handleNavSelect} />
+      <LeftPanel 
+        collapsed={leftCollapsed} onToggle={() => setLeftCollapsed(p => !p)} 
+        activeNav={activeNav} setActiveNav={handleNavSelect} 
+        sessions={sessions} activeSessionId={activeSessionId} onSessionSelect={loadSession}
+      />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         <TabBar activeTab={activeTab} setActiveTab={setActiveTab} rightVisible={rightVisible} onToggleRight={() => setRightVisible(p => !p)} />
         <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -1316,7 +1361,7 @@ export default function App() {
           {activeTab === 'playground' && <PlaygroundView />}
           {activeTab === 'analysis' && <AnalysisView />}
           {activeTab === 'files' && (
-            <FilesView />
+            <ProjectsView />
           )}
           {activeTab === 'settings' && <SettingsView />}
         </div>
