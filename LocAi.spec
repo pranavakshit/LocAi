@@ -26,7 +26,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['tkinter', '_tkinter', 'tk', 'tcl'],
     noarchive=False,
     optimize=0,
 )

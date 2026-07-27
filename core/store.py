@@ -79,4 +79,21 @@ class DataStore:
             data[sess_id]["updated_at"] = time.time()
             _save_json(SESSIONS_FILE, data)
 
+    @staticmethod
+    def get_config() -> Dict:
+        config_file = os.path.join(USERDATA_DIR, 'config.json')
+        return _load_json(config_file)
+
+    @staticmethod
+    def save_config(config: Dict):
+        config_file = os.path.join(USERDATA_DIR, 'config.json')
+        _save_json(config_file, config)
+
+    @staticmethod
+    def update_config(updates: Dict) -> Dict:
+        config = DataStore.get_config()
+        config.update(updates)
+        DataStore.save_config(config)
+        return config
+
 store = DataStore()

@@ -1,8 +1,13 @@
 import { useState, useRef, useEffect, type KeyboardEvent, type ReactNode } from 'react'
 
+declare global {
+  interface Window {
+    pywebview?: any;
+  }
+}
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'chat' | 'playground' | 'analysis' | 'files' | 'settings'
+type Tab = 'chat' | 'playground' | 'analysis' | 'files' | 'settings' | 'models'
 type NavSection = 'new-chat' | 'history' | 'models' | 'files' | 'analytics' | 'config'
 
 interface Message {
@@ -11,14 +16,6 @@ interface Message {
   content: string
   time: string
   tokens?: number
-}
-
-interface FileNode {
-  name: string
-  type: 'file' | 'folder'
-  children?: FileNode[]
-  ext?: string
-  size?: string
 }
 
 // ─── Sample data ───────────────────────────────────────────────────────────────
@@ -32,47 +29,7 @@ const INITIAL_MESSAGES: Message[] = [
   }
 ]
 
-const FILE_TREE: FileNode[] = [
-  {
-    name: 'anomaly-detection',
-    type: 'folder',
-    children: [
-      {
-        name: 'data',
-        type: 'folder',
-        children: [
-          { name: 'timeseries_q1.csv', type: 'file', ext: 'csv', size: '14.2 MB' },
-          { name: 'timeseries_q2.csv', type: 'file', ext: 'csv', size: '16.8 MB' },
-          { name: 'timeseries_q3.csv', type: 'file', ext: 'csv', size: '12.1 MB' },
-          { name: 'anomaly_report.json', type: 'file', ext: 'json', size: '84 KB' },
-        ],
-      },
-      {
-        name: 'notebooks',
-        type: 'folder',
-        children: [
-          { name: 'eda.ipynb', type: 'file', ext: 'ipynb', size: '2.4 MB' },
-          { name: 'spectral_fft.ipynb', type: 'file', ext: 'ipynb', size: '1.8 MB' },
-          { name: 'correlation.ipynb', type: 'file', ext: 'ipynb', size: '940 KB' },
-        ],
-      },
-      {
-        name: 'src',
-        type: 'folder',
-        children: [
-          { name: 'detector.py', type: 'file', ext: 'py', size: '8.2 KB' },
-          { name: 'pipeline.py', type: 'file', ext: 'py', size: '5.1 KB' },
-          { name: 'fft_utils.py', type: 'file', ext: 'py', size: '3.7 KB' },
-          { name: 'config.yaml', type: 'file', ext: 'yaml', size: '1.2 KB' },
-        ],
-      },
-      { name: 'requirements.txt', type: 'file', ext: 'txt', size: '412 B' },
-      { name: 'README.md', type: 'file', ext: 'md', size: '6.8 KB' },
-    ],
-  },
-]
 
-const HISTORY: { id: string, title: string, time: string }[] = []
 
 // ─── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -190,53 +147,87 @@ const Ic = {
       <path d="M6.5 1L7.8 5.2l4.2 1.3-4.2 1.3L6.5 12 5.2 7.8 1 6.5l4.2-1.3L6.5 1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
     </svg>
   ),
-  Attach: () => (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-      <path d="M7 11V4a3 3 0 016 0v7a5 5 0 01-10 0V4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-    </svg>
-  ),
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-function extColor(ext?: string) {
-  const map: Record<string, string> = {
-    py: '#4f8ef7', ipynb: '#f59e0b', csv: '#34d399',
-    json: '#fbbf24', yaml: '#8b5cf6', md: '#7a85a0',
-    txt: '#4a5266',
-  }
-  return map[ext ?? ''] ?? '#4a5266'
-}
 
 function formatContent(text: string) {
-  const lines = text.split('\n')
-  return lines.map((line, i) => {
-    if (line.startsWith('**') && line.endsWith('**')) {
-      return <p key={i} style={{ margin: '10px 0 4px', fontWeight: 600, fontSize: 13, color: 'var(--text-1)' }}>{line.slice(2, -2)}</p>
-    }
-    if (line.startsWith('- ')) {
-      const content = line.slice(2).replace(/\*\*(.*?)\*\*/g, (_, m) => `__BOLD__${m}__BOLD__`)
-      const parts = content.split('__BOLD__')
+  // First, separate code blocks
+  const blockParts = text.split(/(```[\s\S]*?```)/g);
+  
+  return blockParts.map((part, i) => {
+    if (part.startsWith('```') && part.endsWith('```')) {
+      // It's a code block
+      const lines = part.slice(3, -3).split('\n');
+      const lang = lines[0].trim();
+      const code = lines.slice(1).join('\n');
+      
       return (
-        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 3 }}>
-          <span style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 1 }}>·</span>
-          <span style={{ color: 'var(--text-2)', fontSize: 13.5, lineHeight: 1.6 }}>
-            {parts.map((p, j) => j % 2 === 1 ? <strong key={j} style={{ color: 'var(--text-1)', fontWeight: 600 }}>{p}</strong> : p)}
-          </span>
+        <div key={`cb-${i}`} style={{ margin: '12px 0', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+          {lang && (
+            <div style={{ background: 'var(--panel)', padding: '4px 12px', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+              <span>{lang}</span>
+              <button onClick={() => {
+                const evt = new CustomEvent('canvas:open', { detail: { content: code } })
+                window.dispatchEvent(evt)
+              }} style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 11 }}>Open in Canvas ↗</button>
+            </div>
+          )}
+          <pre style={{ margin: 0, padding: 12, background: 'var(--surface)', color: 'var(--text-2)', fontSize: 12.5, fontFamily: 'var(--font-mono)', overflowX: 'auto', lineHeight: 1.6 }}>
+            {code}
+          </pre>
         </div>
       )
     }
-    const hasBold = line.includes('**')
-    if (hasBold) {
-      const parts = line.split(/\*\*(.*?)\*\*/g)
-      return (
-        <p key={i} style={{ margin: '3px 0', color: 'var(--text-2)', fontSize: 13.5, lineHeight: 1.65 }}>
-          {parts.map((p, j) => j % 2 === 1 ? <strong key={j} style={{ color: 'var(--text-1)', fontWeight: 600 }}>{p}</strong> : p)}
-        </p>
-      )
-    }
-    if (line.trim() === '') return <div key={i} style={{ height: 6 }} />
-    return <p key={i} style={{ margin: '3px 0', color: 'var(--text-2)', fontSize: 13.5, lineHeight: 1.65, fontFamily: line.includes('→') || line.includes(':') && line.match(/^\w.*:.*\d/) ? 'var(--font-mono)' : undefined }}>{line}</p>
+
+    // Process normal text lines
+    const lines = part.split('\n');
+    return lines.map((line, j) => {
+      if (line.trim() === '') return <div key={`empty-${i}-${j}`} style={{ height: 6 }} />;
+      
+      // Inline formatting logic: bold (**) and inline code (`)
+      // Simple parser for both by splitting
+      let tokens: any[] = [line];
+      
+      // Process bold
+      tokens = tokens.flatMap((t: any) => {
+        if (typeof t !== 'string') return [t];
+        if (!t.includes('**')) return [t];
+        const pieces = t.split(/\*\*(.*?)\*\*/g);
+        return pieces.map((p, k) => k % 2 === 1 ? <strong key={`b-${k}`} style={{ color: 'var(--text-1)', fontWeight: 600 }}>{p}</strong> : p);
+      });
+
+      // Process inline code
+      tokens = tokens.flatMap((t: any) => {
+        if (typeof t !== 'string') return [t];
+        if (!t.includes('`')) return [t];
+        const pieces = t.split(/`(.*?)`/g);
+        return pieces.map((p, k) => k % 2 === 1 ? <code key={`c-${k}`} style={{ color: 'var(--accent)', background: 'var(--surface)', padding: '2px 4px', borderRadius: 4, fontFamily: 'var(--font-mono)', fontSize: '0.9em' }}>{p}</code> : p);
+      });
+
+      if (line.startsWith('# ')) {
+        return <h1 key={`line-${i}-${j}`} style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', margin: '16px 0 8px' }}>{tokens[0] === '# ' ? tokens.slice(1) : tokens}</h1>
+      }
+      if (line.startsWith('## ')) {
+        return <h2 key={`line-${i}-${j}`} style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)', margin: '14px 0 6px' }}>{tokens[0] === '## ' ? tokens.slice(1) : tokens}</h2>
+      }
+      if (line.startsWith('- ')) {
+        const adjustedTokens = [...tokens];
+        if (typeof adjustedTokens[0] === 'string') {
+          adjustedTokens[0] = adjustedTokens[0].substring(2);
+        }
+        return (
+          <div key={`line-${i}-${j}`} style={{ display: 'flex', gap: 8, marginBottom: 3 }}>
+            <span style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 1 }}>·</span>
+            <span style={{ color: 'var(--text-2)', fontSize: 13.5, lineHeight: 1.6 }}>
+              {adjustedTokens}
+            </span>
+          </div>
+        )
+      }
+      return <p key={`line-${i}-${j}`} style={{ margin: '3px 0', color: 'var(--text-2)', fontSize: 13.5, lineHeight: 1.65 }}>{tokens}</p>
+    })
   })
 }
 
@@ -291,8 +282,7 @@ function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, act
         </div>
         {!collapsed && (
           <div style={{ overflow: 'hidden' }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-1)', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>Nexus AI</div>
-            <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>v2.4.1 · Pro</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-1)', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>LocAi</div>
           </div>
         )}
       </div>
@@ -350,8 +340,8 @@ function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, act
                   (e.currentTarget as HTMLButtonElement).style.color = activeSessionId === s.id ? 'var(--text-1)' : 'var(--text-2)' 
                 }}
               >
-                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || 'Untitled Session'}</div>
-                <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>{new Date(s.updated_at).toLocaleDateString()}</div>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name || 'Untitled Session'}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>{new Date(s.updated_at * 1000).toLocaleDateString()}</div>
               </button>
             ))}
           </div>
@@ -383,15 +373,16 @@ function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, act
       <button
         onClick={onToggle}
         style={{
-          position: 'absolute', top: 14, right: -11,
-          width: 22, height: 22, borderRadius: '50%',
+          position: 'absolute', top: 14, right: -15,
+          width: 30, height: 30, borderRadius: '50%',
           background: 'var(--surface-2)', border: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', color: 'var(--text-2)', zIndex: 20,
-          transition: 'background 120ms, color 120ms',
+          cursor: 'pointer', color: 'var(--text-1)', zIndex: 20,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+          transition: 'background 120ms, color 120ms, transform 120ms',
         }}
-        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--accent)' }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-2)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-2)' }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--accent)'; (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.1)' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-2)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-1)'; (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)' }}
       >
         {collapsed ? <Ic.ChevRight /> : <Ic.ChevLeft />}
       </button>
@@ -409,12 +400,15 @@ const TABS: { id: Tab; label: string; Icon: () => React.ReactElement }[] = [
   { id: 'settings', label: 'Settings', Icon: Ic.Cog },
 ]
 
-function TabBar({ activeTab, setActiveTab, rightVisible, onToggleRight }: {
+function TabBar({ activeTab, setActiveTab, rightVisible, onToggleRight, selectedModel, onGitCommand }: {
   activeTab: Tab
   setActiveTab: (t: Tab) => void
   rightVisible: boolean
   onToggleRight: () => void
+  selectedModel: string
+  onGitCommand: (cmd: string) => void
 }) {
+  const [gitMenuOpen, setGitMenuOpen] = useState(false)
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 2,
@@ -455,9 +449,31 @@ function TabBar({ activeTab, setActiveTab, rightVisible, onToggleRight }: {
         })}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <StatusPill label="claude-opus-4-8" color="var(--accent)" />
-        <StatusPill label="● Live" color="var(--green)" />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'relative' }}>
+        <button
+          onClick={() => setGitMenuOpen(p => !p)}
+          title="Git Menu"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px',
+            borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)',
+            color: 'var(--text-1)', cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-sans)',
+          }}
+        >
+          <Ic.Sparkle /> Git ▾
+        </button>
+        {gitMenuOpen && (
+          <div style={{
+            position: 'absolute', top: 32, right: 70, width: 180,
+            background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 100, padding: 4,
+            display: 'flex', flexDirection: 'column'
+          }}>
+            <button onClick={() => { onGitCommand('commit'); setGitMenuOpen(false) }} style={{ padding: '8px 12px', textAlign: 'left', background: 'transparent', border: 'none', color: 'var(--text-1)', fontSize: 12, cursor: 'pointer', borderRadius: 4 }} onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)'} onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = 'transparent'}>Ask AI to Commit</button>
+            <button onClick={() => { onGitCommand('push'); setGitMenuOpen(false) }} style={{ padding: '8px 12px', textAlign: 'left', background: 'transparent', border: 'none', color: 'var(--text-1)', fontSize: 12, cursor: 'pointer', borderRadius: 4 }} onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)'} onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = 'transparent'}>Ask AI to Push</button>
+            <button onClick={() => { onGitCommand('status'); setGitMenuOpen(false) }} style={{ padding: '8px 12px', textAlign: 'left', background: 'transparent', border: 'none', color: 'var(--text-1)', fontSize: 12, cursor: 'pointer', borderRadius: 4 }} onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)'} onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = 'transparent'}>Ask AI for Status</button>
+          </div>
+        )}
+        <StatusPill label={selectedModel || 'No Model'} color="var(--accent)" />
         <button
           onClick={onToggleRight}
           title={rightVisible ? 'Hide context panel' : 'Show context panel'}
@@ -492,13 +508,14 @@ function StatusPill({ label, color }: { label: string; color: string }) {
 
 // ─── Chat View ─────────────────────────────────────────────────────────────────
 
-function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef }: {
+function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef, selectedModel }: {
   messages: Message[]
   input: string
   setInput: (v: string) => void
   onSend: () => void
   onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void
   messagesEndRef: React.RefObject<HTMLDivElement>
+  selectedModel: string
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)' }}>
@@ -525,7 +542,7 @@ function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Message Nexus AI… (⏎ send, ⇧⏎ newline)"
+            placeholder="Message LocAi… (⏎ send, ⇧⏎ newline)"
             rows={3}
             style={{
               display: 'block', width: '100%', padding: '14px 16px 8px',
@@ -538,7 +555,7 @@ function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef
             <button onClick={async () => {
               if (window.pywebview) {
                 const path = await (window as any).pywebview.api.open_file_dialog()
-                if (path) setInput(prev => prev + `\n[Attached: ${path}]\n`)
+                if (path) setInput(input + `\n[Attached: ${path}]\n`)
               } else {
                 alert("Native pywebview API not found.")
               }
@@ -547,7 +564,7 @@ function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef
             </button>
             <div style={{ flex: 1 }} />
             <span style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
-              {input.length > 0 ? `${input.length} chars` : 'Model: opus-4-8'}
+              {input.length > 0 ? `${input.length} chars` : `Model: ${selectedModel || 'None'}`}
             </span>
             <button
               onClick={onSend}
@@ -566,7 +583,7 @@ function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef
           </div>
         </div>
         <div style={{ textAlign: 'center', marginTop: 8, fontSize: 10.5, color: 'var(--text-3)' }}>
-          Nexus AI can make mistakes. Verify important outputs.
+          LocAi can make mistakes. Verify important outputs.
         </div>
       </div>
     </div>
@@ -639,60 +656,10 @@ function MsgAction({ children, label }: { children: ReactNode; label: string }) 
 
 // ─── Playground View ───────────────────────────────────────────────────────────
 
-const PLAYGROUND_CODE = `import numpy as np
-from scipy import signal
-import pandas as pd
-
-def detect_anomalies(
-    ts: np.ndarray,
-    threshold: float = 3.0,
-    window: int = 200,
-) -> dict:
-    """
-    Z-score based anomaly detection with
-    rolling baseline normalization.
-    """
-    mu = pd.Series(ts).rolling(window, center=True).mean()
-    sigma = pd.Series(ts).rolling(window, center=True).std()
-    z_scores = (ts - mu) / sigma
-
-    spikes = np.where(z_scores > threshold)[0]
-    valleys = np.where(z_scores < -threshold)[0]
-
-    return {
-        "spikes": spikes.tolist(),
-        "valleys": valleys.tolist(),
-        "max_z": float(z_scores.max()),
-        "min_z": float(z_scores.min()),
-    }
-
-
-def spectral_analysis(ts: np.ndarray, fs: float = 1.0) -> dict:
-    freqs, psd = signal.periodogram(ts, fs=fs)
-    dominant_idx = np.argmax(psd[1:]) + 1
-    return {
-        "dominant_freq": float(freqs[dominant_idx]),
-        "dominant_period": float(1 / freqs[dominant_idx]),
-        "noise_floor_db": float(10 * np.log10(np.percentile(psd, 5))),
-    }
-`
 
 function PlaygroundView() {
-  const [code, setCode] = useState(PLAYGROUND_CODE)
-  const [output, setOutput] = useState(`>>> detect_anomalies(ts, threshold=3.0)
-{
-  "spikes":  [847, 1048, 1253],
-  "valleys": [1203],
-  "max_z":   3.24,
-  "min_z":  -2.81
-}
-
->>> spectral_analysis(ts, fs=1/3600)
-{
-  "dominant_freq":   0.00481,
-  "dominant_period": 208.0,
-  "noise_floor_db": -42.3
-}`)
+  const [code, setCode] = useState('')
+  const [output, setOutput] = useState('')
   const [running, setRunning] = useState(false)
 
   const run = async () => {
@@ -719,6 +686,23 @@ function PlaygroundView() {
           <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>detector.py</span>
           <span style={{ fontSize: 10, color: 'var(--green)', fontFamily: 'var(--font-mono)', background: `${String('var(--green)')}14`, border: '1px solid #34d39924', padding: '1px 6px', borderRadius: 4 }}>python</span>
           <div style={{ flex: 1 }} />
+          <button
+            onClick={() => {
+               // Assuming a global context or event, we could trigger a chat message here.
+               // For this mock we'll just alert or if we had access to setActiveTab we'd jump to Chat.
+               const evt = new CustomEvent('playground:debug', { detail: { code, output } })
+               window.dispatchEvent(evt)
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
+              borderRadius: 6, border: '1px solid var(--accent)', cursor: 'pointer',
+              background: 'transparent',
+              color: 'var(--accent)',
+              fontSize: 12, fontWeight: 500, fontFamily: 'var(--font-sans)',
+            }}
+          >
+            <Ic.Sparkle /> Ask AI
+          </button>
           <button
             onClick={run}
             style={{
@@ -766,125 +750,20 @@ function PlaygroundView() {
 
 // ─── Analysis View ─────────────────────────────────────────────────────────────
 
-const BAR_DATA = [
-  { label: 'Mar 28', value: 87, anomaly: true },
-  { label: 'Apr 4', value: 62, anomaly: false },
-  { label: 'Apr 11', value: 58, anomaly: false },
-  { label: 'Apr 17', value: 14, anomaly: true },
-  { label: 'Apr 25', value: 71, anomaly: false },
-  { label: 'May 2', value: 68, anomaly: false },
-  { label: 'May 9', value: 55, anomaly: false },
-  { label: 'May 16', value: 89, anomaly: true },
-  { label: 'May 23', value: 60, anomaly: false },
-  { label: 'Jun 1', value: 52, anomaly: false },
-]
-
 function AnalysisView() {
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 24, background: 'var(--bg)' }}>
-      {/* KPI cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
-        {[
-          { label: 'Anomalies detected', value: '4', delta: '+1 this week', color: 'var(--red)' },
-          { label: 'Dominant period', value: '208 u', delta: '8.67 days', color: 'var(--accent)' },
-          { label: 'Max Z-score', value: '3.24σ', delta: 'index 847', color: 'var(--amber)' },
-          { label: 'SNR', value: '18.4 dB', delta: 'noise −42 dB', color: 'var(--green)' },
-        ].map(kpi => (
-          <div key={kpi.label} style={{
-            background: 'var(--surface)', border: '1px solid var(--border)',
-            borderRadius: 10, padding: '16px 18px',
-          }}>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginBottom: 8 }}>{kpi.label}</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: kpi.color, letterSpacing: '-0.02em', lineHeight: 1 }}>{kpi.value}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>{kpi.delta}</div>
-          </div>
-        ))}
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'var(--bg)' }}>
+      <div style={{ width: 48, height: 48, borderRadius: 24, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, color: 'var(--text-3)' }}>
+        <Ic.Chart />
       </div>
-
-      {/* Bar chart */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '20px 24px', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
-          <div>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-1)' }}>System Telemetry</div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>Resource usage · anomaly events highlighted</div>
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 14 }}>
-            <Legend color="var(--accent)" label="Normal" />
-            <Legend color="var(--red)" label="Anomaly" />
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 160 }}>
-          {BAR_DATA.map(d => (
-            <div key={d.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, height: '100%', justifyContent: 'flex-end' }}>
-              <div
-                title={`${d.label}: ${d.value}`}
-                style={{
-                  width: '100%', borderRadius: '3px 3px 0 0',
-                  height: `${d.value}%`,
-                  background: d.anomaly
-                    ? 'linear-gradient(to top, var(--red), #f8717180)'
-                    : 'linear-gradient(to top, var(--accent), #4f8ef760)',
-                  transition: 'opacity 150ms',
-                  cursor: 'pointer',
-                  boxShadow: d.anomaly ? '0 0 8px #f8717140' : '0 0 8px #4f8ef730',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.opacity = '0.8' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.opacity = '1' }}
-              />
-              <span style={{ fontSize: 9.5, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', transform: 'rotate(-40deg)', transformOrigin: 'center', whiteSpace: 'nowrap' }}>{d.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Frequency table */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-1)' }}>FFT Frequency Components</div>
-        </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: 'var(--panel)' }}>
-              {['Rank', 'Frequency (Hz)', 'Period (units)', 'Power (dB)', 'Category'].map(h => (
-                <th key={h} style={{ padding: '9px 16px', textAlign: 'left', fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--text-3)', fontWeight: 500 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              { rank: 1, freq: '0.00481', period: '208', power: '−18.2', cat: 'Dominant', color: 'var(--accent)' },
-              { rank: 2, freq: '0.01667', period: '60', power: '−24.7', cat: 'Secondary', color: 'var(--purple)' },
-              { rank: 3, freq: '0.03333', period: '30', power: '−31.4', cat: 'Harmonic', color: 'var(--text-3)' },
-              { rank: 4, freq: '0.08333', period: '12', power: '−38.9', cat: 'Noise', color: 'var(--text-3)' },
-            ].map(row => (
-              <tr key={row.rank} style={{ borderTop: '1px solid var(--border-soft)' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'var(--surface-2)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
-              >
-                <td style={{ padding: '9px 16px', fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-3)' }}>#{row.rank}</td>
-                <td style={{ padding: '9px 16px', fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-1)' }}>{row.freq}</td>
-                <td style={{ padding: '9px 16px', fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-1)' }}>{row.period}</td>
-                <td style={{ padding: '9px 16px', fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-2)' }}>{row.power}</td>
-                <td style={{ padding: '9px 16px' }}>
-                  <span style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: row.color, background: `${row.color}18`, border: `1px solid ${row.color}30`, padding: '2px 7px', borderRadius: 4 }}>{row.cat}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div style={{ fontSize: 16, fontWeight: 500, color: 'var(--text-1)', marginBottom: 8 }}>No Data Available</div>
+      <div style={{ fontSize: 13, color: 'var(--text-2)', textAlign: 'center', maxWidth: 300, lineHeight: 1.5 }}>
+        Analytics and telemetry data will appear here once you run analysis tasks on your projects.
       </div>
     </div>
   )
 }
 
-function Legend({ color, label }: { color: string; label: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-      <div style={{ width: 8, height: 8, borderRadius: 2, background: color }} />
-      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{label}</span>
-    </div>
-  )
-}
 
 // ─── Projects View ─────────────────────────────────────────────────────────────
 
@@ -955,92 +834,266 @@ function ProjectsView() {
   )
 }
 
-// ─── Settings View ─────────────────────────────────────────────────────────────
+// ─── Models View ─────────────────────────────────────────────────────────────
 
-function SettingsView() {
-  const [apiKey, setApiKey] = useState('sk-ant-••••••••••••••••••••••••••••••••')
-  const [systemPrompt, setSystemPrompt] = useState('You are a senior data scientist specializing in time series analysis and anomaly detection. Provide precise, technically rigorous answers with supporting evidence.')
-  const [updateFreq, setUpdateFreq] = useState(() => localStorage.getItem('locai_update_frequency') || 'monthly')
+function ModelsView({ localModels, recommendedModels }: { localModels: string[], recommendedModels: string[] }) {
+  const [downloadInput, setDownloadInput] = useState('')
+  const [downloading, setDownloading] = useState(false)
+  const [progress, setProgress] = useState(0)
 
-  const handleSave = () => {
-    localStorage.setItem('locai_update_frequency', updateFreq)
-    alert("Settings saved!")
+  const downloadModel = async (modelName: string) => {
+    if (!modelName.trim()) return
+    if (downloading) { alert("Only one download allowed at a time."); return; }
+    setDownloading(true)
+    setProgress(0)
+    
+    // Simulate progress bar for now since API doesn't stream progress yet
+    const interval = setInterval(() => {
+      setProgress(p => Math.min(p + 10, 95))
+    }, 1000)
+
+    try {
+      await fetch("http://localhost:8000/model/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: modelName })
+      })
+      clearInterval(interval)
+      setProgress(100)
+      setTimeout(() => {
+        alert(`Successfully downloaded ${modelName}`)
+        setDownloading(false)
+        setDownloadInput('')
+        // Need to trigger a refresh of local models, ideally via props or global state
+      }, 500)
+    } catch (e) {
+      clearInterval(interval)
+      alert(`Failed to download ${modelName}`)
+      setDownloading(false)
+    }
   }
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 24, background: 'var(--bg)' }}>
-      <div style={{ maxWidth: 600 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', marginBottom: 20, letterSpacing: '-0.01em' }}>Configuration</h2>
+      <div style={{ maxWidth: 800 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', marginBottom: 4, letterSpacing: '-0.01em' }}>Model Manager</h2>
+        <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 24 }}>Manage downloaded models and discover new ones.</div>
 
-        {[
-          {
-            section: 'API', fields: [
-              { label: 'API Key', value: apiKey, onChange: setApiKey, mono: true, type: 'password' },
-            ]
-          },
-          {
-            section: 'Model defaults', fields: [
-              { label: 'System prompt', value: systemPrompt, onChange: setSystemPrompt, mono: false, multiline: true },
-            ]
-          },
-          {
-            section: 'Updates', fields: [
-              { label: 'Check for updates', value: updateFreq, onChange: setUpdateFreq, type: 'select', options: ['1 day', '3 days', '5 days', 'weekly', 'fortnightly', 'monthly'] }
-            ]
-          }
-        ].map(group => (
-          <div key={group.section} style={{ marginBottom: 28 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', marginBottom: 12 }}>{group.section}</div>
-            {group.fields.map(field => (
-              <div key={field.label} style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-2)', marginBottom: 6 }}>{field.label}</label>
-                {(field as any).type === 'select' ? (
-                  <select
-                    value={field.value}
-                    onChange={e => field.onChange(e.target.value)}
-                    style={{
-                      width: '100%', padding: '9px 12px',
-                      background: 'var(--surface)', border: '1px solid var(--border)',
-                      borderRadius: 8, outline: 'none', color: 'var(--text-1)',
-                      fontSize: 12.5, fontFamily: 'var(--font-sans)',
-                    }}
-                  >
-                    {(field as any).options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
-                  </select>
-                ) : (field as any).multiline ? (
-                  <textarea
-                    value={field.value}
-                    onChange={e => field.onChange(e.target.value)}
-                    rows={4}
-                    style={{
-                      width: '100%', padding: '10px 12px',
-                      background: 'var(--surface)', border: '1px solid var(--border)',
-                      borderRadius: 8, outline: 'none', color: 'var(--text-1)',
-                      fontSize: 12.5, fontFamily: field.mono ? 'var(--font-mono)' : 'var(--font-sans)',
-                      lineHeight: 1.6,
-                    }}
-                    onFocus={e => (e.currentTarget as HTMLTextAreaElement).style.borderColor = 'var(--accent)'}
-                    onBlur={e => (e.currentTarget as HTMLTextAreaElement).style.borderColor = 'var(--border)'}
-                  />
-                ) : (
-                  <input
-                    type={(field as any).type || 'text'}
-                    value={field.value}
-                    onChange={e => field.onChange(e.target.value)}
-                    style={{
-                      width: '100%', padding: '9px 12px',
-                      background: 'var(--surface)', border: '1px solid var(--border)',
-                      borderRadius: 8, outline: 'none', color: 'var(--text-1)',
-                      fontSize: 12.5, fontFamily: field.mono ? 'var(--font-mono)' : 'var(--font-sans)',
-                    }}
-                    onFocus={e => (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--accent)'}
-                    onBlur={e => (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--border)'}
-                  />
-                )}
-              </div>
-            ))}
+        <div style={{ display: 'flex', gap: 24 }}>
+          {/* Left Column: Downloaded Models */}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', marginBottom: 16 }}>Downloaded Models</div>
+            {localModels.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>No models found.</div>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {localModels.map(model => (
+                <div key={model} style={{ padding: '16px', background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)', marginBottom: 4 }}>{model}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', display: 'flex', gap: 12 }}>
+                      <span>Size: 4.2 GB</span>
+                      <span>Context: 8k tokens</span>
+                    </div>
+                  </div>
+                  <button style={{ padding: '6px 12px', background: 'var(--surface-2)', border: 'none', borderRadius: 6, color: 'var(--red)', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>Delete</button>
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
+
+          {/* Right Column: Download New */}
+          <div style={{ width: 320 }}>
+            <div style={{ padding: 20, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-1)', marginBottom: 12 }}>Download a model</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="e.g. gemma:2b"
+                  value={downloadInput}
+                  onChange={e => setDownloadInput(e.target.value)}
+                  disabled={downloading}
+                  style={{
+                    flex: 1, padding: '8px 12px', background: 'var(--surface)', border: '1px solid var(--border)',
+                    borderRadius: 6, outline: 'none', color: 'var(--text-1)', fontSize: 12.5,
+                  }}
+                />
+                <button
+                  onClick={() => downloadModel(downloadInput)}
+                  disabled={downloading || !downloadInput.trim()}
+                  style={{
+                    padding: '8px 16px', background: 'var(--accent)', border: 'none',
+                    borderRadius: 6, color: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 500,
+                    opacity: downloading || !downloadInput.trim() ? 0.6 : 1
+                  }}
+                >
+                  Pull
+                </button>
+              </div>
+              
+              {downloading && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-2)', marginBottom: 6 }}>
+                    <span>Downloading...</span>
+                    <span>{progress}%</span>
+                  </div>
+                  <div style={{ height: 4, background: 'var(--surface)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${progress}%`, background: 'var(--accent)', transition: 'width 200ms ease-out' }} />
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 24 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Recommended</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {recommendedModels.slice(0, 5).map(m => (
+                    <button key={m} onClick={() => setDownloadInput(m)} style={{
+                      textAlign: 'left', padding: '6px 8px', background: 'transparent', border: 'none',
+                      color: 'var(--accent)', cursor: 'pointer', fontSize: 12, borderRadius: 4,
+                    }} onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)'} onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = 'transparent'}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Settings View ─────────────────────────────────────────────────────────────
+
+function SettingsView() {
+  // Personalization State
+  const [personality, setPersonality] = useState('Standard')
+  const [customInstructions, setCustomInstructions] = useState('')
+  const [enableMemories, setEnableMemories] = useState(true)
+  const [allowToolMemory, setAllowToolMemory] = useState(false)
+
+  // Git State
+  const [branchPrefix, setBranchPrefix] = useState('locai/')
+  const [prMergeMethod, setPrMergeMethod] = useState('Squash')
+  const [alwaysForcePush, setAlwaysForcePush] = useState(false)
+  const [draftPrs, setDraftPrs] = useState(false)
+  const [reviewDelivery, setReviewDelivery] = useState('Inline')
+  const [commitInstructions, setCommitInstructions] = useState('')
+  const [prInstructions, setPrInstructions] = useState('')
+
+  // Updates State
+  const [updateFreq, setUpdateFreq] = useState(() => localStorage.getItem('locai_update_frequency') || 'monthly')
+
+  useEffect(() => {
+    fetch("http://localhost:8000/config")
+      .then(res => res.json())
+      .then(data => {
+        if (data.personality) setPersonality(data.personality)
+        if (data.customInstructions) setCustomInstructions(data.customInstructions)
+        if (data.enableMemories !== undefined) setEnableMemories(data.enableMemories)
+        if (data.allowToolMemory !== undefined) setAllowToolMemory(data.allowToolMemory)
+        if (data.branchPrefix) setBranchPrefix(data.branchPrefix)
+        if (data.prMergeMethod) setPrMergeMethod(data.prMergeMethod)
+        if (data.alwaysForcePush !== undefined) setAlwaysForcePush(data.alwaysForcePush)
+        if (data.draftPrs !== undefined) setDraftPrs(data.draftPrs)
+        if (data.reviewDelivery) setReviewDelivery(data.reviewDelivery)
+        if (data.commitInstructions) setCommitInstructions(data.commitInstructions)
+        if (data.prInstructions) setPrInstructions(data.prInstructions)
+      })
+      .catch(console.error)
+  }, [])
+
+  const handleSave = async () => {
+    localStorage.setItem('locai_update_frequency', updateFreq)
+    const config = {
+      personality, customInstructions, enableMemories, allowToolMemory,
+      branchPrefix, prMergeMethod, alwaysForcePush, draftPrs, reviewDelivery,
+      commitInstructions, prInstructions
+    }
+    try {
+      await fetch("http://localhost:8000/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates: config })
+      })
+      alert("Settings saved!")
+    } catch(e) {
+      console.error(e)
+      alert("Failed to save settings.")
+    }
+  }
+
+  const resetMemories = () => {
+    if (confirm("Are you sure you want to reset all memories?")) alert("Memories reset.")
+  }
+
+  const Checkbox = ({ label, checked, onChange }: any) => (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: 'var(--text-1)', cursor: 'pointer', marginBottom: 12 }}>
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }} />
+      {label}
+    </label>
+  )
+
+  const Select = ({ label, value, onChange, options }: any) => (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-2)', marginBottom: 6 }}>{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)} style={{ width: '100%', padding: '9px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-1)', fontSize: 12.5, fontFamily: 'var(--font-sans)' }}>
+        {options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+      </select>
+    </div>
+  )
+
+  const Input = ({ label, value, onChange, mono = false }: any) => (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-2)', marginBottom: 6 }}>{label}</label>
+      <input type="text" value={value} onChange={e => onChange(e.target.value)} style={{ width: '100%', padding: '9px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-1)', fontSize: 12.5, fontFamily: mono ? 'var(--font-mono)' : 'var(--font-sans)' }} />
+    </div>
+  )
+
+  const Textarea = ({ label, value, onChange }: any) => (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-2)', marginBottom: 6 }}>{label}</label>
+      <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} style={{ width: '100%', padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-1)', fontSize: 12.5, fontFamily: 'var(--font-sans)', lineHeight: 1.6, resize: 'vertical' }} />
+    </div>
+  )
+
+  const SectionTitle = ({ title }: { title: string }) => (
+    <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', marginBottom: 16, marginTop: 28, borderBottom: '1px solid var(--border-soft)', paddingBottom: 8 }}>{title}</div>
+  )
+
+  return (
+    <div style={{ height: '100%', overflowY: 'auto', padding: 24, background: 'var(--bg)' }}>
+      <div style={{ maxWidth: 600 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', marginBottom: 4, letterSpacing: '-0.01em' }}>Settings</h2>
+        <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 20 }}>Configure your LocAi environment and integrations.</div>
+
+        <SectionTitle title="Personalization" />
+        <Select label="Personality" value={personality} onChange={setPersonality} options={['Standard', 'Concise', 'Detailed', 'Creative']} />
+        <Textarea label="Custom instructions" value={customInstructions} onChange={setCustomInstructions} />
+        <div style={{ padding: 12, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)', marginTop: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-1)', marginBottom: 12 }}>Memory</div>
+          <Checkbox label="Enable memories" checked={enableMemories} onChange={setEnableMemories} />
+          <Checkbox label="Allow memory generation from tool-assisted chats" checked={allowToolMemory} onChange={setAllowToolMemory} />
+          <button onClick={resetMemories} style={{ marginTop: 8, padding: '6px 12px', background: 'transparent', border: '1px solid var(--red)', color: 'var(--red)', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}>Reset all memories</button>
+        </div>
+
+        <SectionTitle title="Git" />
+        <Input label="Branch prefix" value={branchPrefix} onChange={setBranchPrefix} mono={true} />
+        <Select label="Pull request merge method" value={prMergeMethod} onChange={setPrMergeMethod} options={['Merge', 'Squash', 'Rebase']} />
+        <Checkbox label="Always force push" checked={alwaysForcePush} onChange={setAlwaysForcePush} />
+        <Checkbox label="Create draft pull requests" checked={draftPrs} onChange={setDraftPrs} />
+        <Select label="Review delivery" value={reviewDelivery} onChange={setReviewDelivery} options={['Inline', 'Detached']} />
+        <Textarea label="Commit instructions" value={commitInstructions} onChange={setCommitInstructions} />
+        <Textarea label="Pull request instructions" value={prInstructions} onChange={setPrInstructions} />
+
+        <SectionTitle title="Updates" />
+        <Select label="Check for updates" value={updateFreq} onChange={setUpdateFreq} options={['1 day', '3 days', '5 days', 'weekly', 'fortnightly', 'monthly']} />
+
+        <SectionTitle title="Legal & About" />
+        <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
+          <a href="#" style={{ fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none' }}>End User License Agreement</a>
+          <a href="#" style={{ fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none' }}>Terms & Conditions</a>
+          <a href="#" style={{ fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none' }}>Privacy Policy</a>
+        </div>
 
         <button onClick={handleSave} style={{
           padding: '8px 18px', borderRadius: 8, border: 'none',
@@ -1056,13 +1109,16 @@ function SettingsView() {
 
 // ─── Right Panel ───────────────────────────────────────────────────────────────
 
-function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, setMaxTokens, totalTokens, localModels, recommendedModels }: {
+function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, setMaxTokens, systemPrompt, setSystemPrompt, totalTokens, messageCount, localModels, recommendedModels, activeContext }: {
   model: string; setModel: (m: string) => void
   temperature: number; setTemperature: (v: number) => void
   maxTokens: number; setMaxTokens: (v: number) => void
+  systemPrompt: string; setSystemPrompt: (v: string) => void
   totalTokens: number
+  messageCount: number
   localModels: string[]
   recommendedModels: string[]
+  activeContext: string[]
 }) {
   const [downloadInput, setDownloadInput] = useState('')
   const [downloading, setDownloading] = useState(false)
@@ -1152,6 +1208,20 @@ function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, s
       <Section title="Parameters">
         <RangeParam label="Temperature" value={temperature} min={0} max={2} step={0.01} onChange={setTemperature} format={v => v.toFixed(2)} />
         <RangeParam label="Max tokens" value={maxTokens} min={256} max={8192} step={256} onChange={setMaxTokens} format={v => v.toLocaleString()} />
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>System Prompt</div>
+          <textarea 
+            value={systemPrompt} 
+            onChange={e => setSystemPrompt(e.target.value)}
+            placeholder="You are LocAi..."
+            style={{ 
+              width: '100%', height: 80, resize: 'vertical', 
+              background: 'var(--surface-2)', color: 'var(--text-2)', 
+              border: '1px solid var(--border)', borderRadius: 6, 
+              padding: '8px', fontSize: 12, fontFamily: 'var(--font-sans)' 
+            }}
+          />
+        </div>
       </Section>
 
       {/* Usage */}
@@ -1159,7 +1229,7 @@ function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, s
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {[
             { label: 'Total tokens', value: totalTokens.toLocaleString(), color: 'var(--accent)' },
-            { label: 'Messages', value: '4', color: 'var(--text-1)' },
+            { label: 'Messages', value: messageCount.toString(), color: 'var(--text-1)' },
             { label: 'Context used', value: `${((totalTokens / 200000) * 100).toFixed(2)}%`, color: 'var(--green)' },
           ].map(stat => (
             <div key={stat.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1179,10 +1249,10 @@ function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, s
       {/* Context */}
       <Section title="Context">
         <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.6 }}>
-          Active context: time series anomaly detection task with Q1–Q3 2024 hourly sensor data from Seattle facility.
+          {activeContext.length === 0 ? "No active context." : "Active context provided to the model:"}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10 }}>
-          {['timeseries', 'fft', 'anomaly', 'python', 'seattle'].map(tag => (
+          {activeContext.map(tag => (
             <span key={tag} style={{
               fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--text-3)',
               background: 'var(--surface)', border: '1px solid var(--border)',
@@ -1235,7 +1305,6 @@ function iconBtnStyle() {
 
 // ─── Root App ──────────────────────────────────────────────────────────────────
 
-const CURRENT_VERSION = "v1.0.0"
 
 export default function App() {
   const [updateAvailable, setUpdateAvailable] = useState<{version: string, url: string} | null>(null)
@@ -1245,19 +1314,15 @@ export default function App() {
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightVisible, setRightVisible] = useState(true)
   const [input, setInput] = useState('')
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const saved = localStorage.getItem('locai_chat_history')
-    if (saved) {
-      try { return JSON.parse(saved) } catch (e) {}
-    }
-    return INITIAL_MESSAGES
-  })
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set(['anomaly-detection', 'data', 'src'])
-  )
+  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES)
+
   const [temperature, setTemperature] = useState(0.7)
-  const [maxTokens, setMaxTokens] = useState(2048)
-  const [selectedModel, setSelectedModel] = useState('claude-opus-4-8')
+  const [maxTokens, setMaxTokens] = useState(4096)
+  const [systemPrompt, setSystemPrompt] = useState("")
+  const [canvasOpen, setCanvasOpen] = useState(false)
+  const [canvasContent, setCanvasContent] = useState('')
+  const [legalConsent, setLegalConsent] = useState(() => localStorage.getItem('locai_legal_consent'))
+  const [selectedModel, setSelectedModel] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const [localModels, setLocalModels] = useState<string[]>([])
@@ -1271,38 +1336,24 @@ export default function App() {
       .then(data => setSessions(data.sessions || []))
       .catch(console.error)
       
-    const freqStr = localStorage.getItem('locai_update_frequency') || 'monthly'
-    const lastCheckStr = localStorage.getItem('locai_last_update_check')
-    const lastCheck = lastCheckStr ? parseInt(lastCheckStr) : 0
-    
-    let intervalDays = 30
-    if (freqStr === '1 day') intervalDays = 1
-    else if (freqStr === '3 days') intervalDays = 3
-    else if (freqStr === '5 days') intervalDays = 5
-    else if (freqStr === 'weekly') intervalDays = 7
-    else if (freqStr === 'fortnightly') intervalDays = 14
-    
-    const now = Date.now()
-    if (now - lastCheck > intervalDays * 24 * 60 * 60 * 1000) {
-      fetch("http://localhost:8000/update/check")
-        .then(res => res.json())
-        .then(data => {
-          localStorage.setItem('locai_last_update_check', now.toString())
-          if (data.latest_version && data.latest_version !== CURRENT_VERSION) {
-            setUpdateAvailable({ version: data.latest_version, url: data.url })
-          }
-        })
-        .catch(console.error)
-    }
+    fetch("http://localhost:8000/update/check")
+      .then(res => res.json())
+      .then(data => {
+        if (data.update_available) {
+          setUpdateAvailable({ version: data.latest_version, url: data.url })
+        }
+      })
+      .catch(console.error)
   }, [])
 
   const loadSession = async (id: string) => {
     setActiveSessionId(id)
+    setActiveTab('chat')
     try {
       const res = await fetch(`http://localhost:8000/sessions/${id}`)
       const data = await res.json()
-      if (data.history) {
-        setMessages(data.history)
+      if (data.messages) {
+        setMessages(data.messages)
       }
     } catch(e) {
       console.error(e)
@@ -1311,15 +1362,44 @@ export default function App() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    localStorage.setItem('locai_chat_history', JSON.stringify(messages))
   }, [messages])
 
   useEffect(() => {
+    const handleDebug = (e: any) => {
+      const { code, output } = e.detail;
+      setActiveTab('chat');
+      const prompt = `Please help me debug this code:\n\n\`\`\`python\n${code}\n\`\`\`\n\nOutput/Error:\n\`\`\`\n${output}\n\`\`\``;
+      const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const newMessage = { id: Date.now().toString(), role: 'user' as const, content: prompt, time: now };
+      setMessages(prev => [...prev, newMessage]);
+      setTimeout(() => {
+        setInput(prompt); // Mocks the API trigger for now without refactoring sendMessage completely.
+      }, 100);
+    }
+    const handleCanvasOpen = (e: any) => {
+      setCanvasContent(e.detail.content);
+      setCanvasOpen(true);
+    }
+    window.addEventListener('playground:debug', handleDebug)
+    window.addEventListener('canvas:open', handleCanvasOpen)
+    return () => {
+      window.removeEventListener('playground:debug', handleDebug)
+      window.removeEventListener('canvas:open', handleCanvasOpen)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetch("http://localhost:8000/model")
+      .then(res => res.json())
+      .then(data => setSelectedModel(data.model))
+      .catch(console.error)
+
     fetch("http://localhost:8000/models")
       .then(res => res.json())
       .then(data => {
         setLocalModels(data.models || [])
-        if (data.models && data.models.length > 0 && selectedModel === 'claude-opus-4-8') {
+        // If for some reason selectedModel wasn't set, default to first available
+        if (data.models && data.models.length > 0 && !selectedModel) {
           setSelectedModel(data.models[0])
         }
       })
@@ -1339,6 +1419,26 @@ export default function App() {
     setMessages(prev => [...prev, newMessage])
     setInput('')
     
+    let currentSessionId = activeSessionId
+    if (!currentSessionId) {
+      // Create a new session with the first user message as title (truncated)
+      const title = userContent.substring(0, 25) + (userContent.length > 25 ? "..." : "")
+      try {
+        const res = await fetch("http://localhost:8000/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: title })
+        })
+        const data = await res.json()
+        if (data.session_id) {
+          currentSessionId = data.session_id
+          setActiveSessionId(currentSessionId)
+          // Also fetch updated sessions list to populate sidebar
+          fetch("http://localhost:8000/sessions").then(r => r.json()).then(d => setSessions(d.sessions || []))
+        }
+      } catch (e) { console.error("Failed to create session", e) }
+    }
+
     const assistantId = (Date.now() + 1).toString();
     setMessages(prev => [...prev, {
       id: assistantId, role: 'assistant',
@@ -1351,7 +1451,12 @@ export default function App() {
       const response = await fetch("http://localhost:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: backendMessages })
+        body: JSON.stringify({ 
+          messages: backendMessages,
+          session_id: currentSessionId,
+          temperature,
+          max_tokens: maxTokens
+        })
       });
 
       const reader = response.body?.getReader();
@@ -1385,10 +1490,21 @@ export default function App() {
   const handleNavSelect = (nav: NavSection) => {
     setActiveNav(nav)
     const tabMap: Partial<Record<NavSection, Tab>> = {
-      files: 'files', analytics: 'analysis', config: 'settings',
+      files: 'files', analytics: 'analysis', config: 'settings', models: 'models',
     }
     if (tabMap[nav]) setActiveTab(tabMap[nav]!)
-    else if (nav === 'new-chat' || nav === 'history') setActiveTab('chat')
+    else if (nav === 'new-chat') {
+      setActiveTab('chat')
+      setActiveSessionId(null)
+      setMessages([{ id: '1', role: 'assistant', content: 'Hello! I am LocAi. How can I help you today?', time: 'Now' }])
+    }
+    else if (nav === 'history') {
+      setActiveTab('chat')
+      if (sessions.length > 0) {
+        const sorted = [...sessions].sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0))
+        loadSession(sorted[0].id)
+      }
+    }
   }
 
   const totalTokens = messages.reduce((s, m) => s + (m.tokens ?? 0), 0)
@@ -1401,11 +1517,36 @@ export default function App() {
         sessions={sessions} activeSessionId={activeSessionId} onSessionSelect={loadSession}
       />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-        <TabBar activeTab={activeTab} setActiveTab={setActiveTab} rightVisible={rightVisible} onToggleRight={() => setRightVisible(p => !p)} />
+        <TabBar 
+          activeTab={activeTab} setActiveTab={setActiveTab} 
+          rightVisible={rightVisible} onToggleRight={() => setRightVisible(p => !p)} 
+          selectedModel={selectedModel}
+          onGitCommand={(cmd) => {
+            setActiveTab('chat');
+            const prompt = `Please ${cmd} the changes in the current project using the configured git credentials.`;
+            const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+            const newMessage = { id: Date.now().toString(), role: 'user' as const, content: prompt, time: now };
+            setMessages(prev => [...prev, newMessage]);
+            
+            // Wait for state to update, then trigger send
+            setTimeout(() => {
+              // We'd ideally call sendMessage with the prompt, but we can just use the state approach.
+              // To avoid refactoring sendMessage completely, we can setInput and submit.
+              // For a robust app we'd pass the prompt to sendMessage.
+              setInput(prompt);
+              // Note: A true trigger would call the backend here.
+            }, 100);
+          }}
+        />
         {updateAvailable && (
           <div style={{ background: 'var(--accent)', color: 'white', padding: '8px 16px', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
             <span>A new version <strong>{updateAvailable.version}</strong> is available!</span>
-            <button onClick={() => { if(window.pywebview) (window as any).pywebview.api.open_url(updateAvailable.url) }} style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 12 }}>Download</button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button onClick={() => { if(window.pywebview) (window as any).pywebview.api.open_url(updateAvailable.url) }} style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 12 }}>Download</button>
+              <button onClick={() => setUpdateAvailable(null)} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 12, padding: 0 }} aria-label="Dismiss">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M10.5 3.5L3.5 10.5M3.5 3.5l7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            </div>
           </div>
         )}
         <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -1414,6 +1555,7 @@ export default function App() {
               messages={messages} input={input} setInput={setInput}
               onSend={sendMessage} onKeyDown={handleKeyDown}
               messagesEndRef={messagesEndRef as React.RefObject<HTMLDivElement>}
+              selectedModel={selectedModel}
             />
           )}
           {activeTab === 'playground' && <PlaygroundView />}
@@ -1422,17 +1564,102 @@ export default function App() {
             <ProjectsView />
           )}
           {activeTab === 'settings' && <SettingsView />}
+          {activeTab === 'models' && <ModelsView localModels={localModels} recommendedModels={recommendedModels} />}
         </div>
       </main>
+
+      {/* Canvas Pane */}
+      {canvasOpen && (
+        <aside style={{
+          width: '45%', minWidth: 400, flexShrink: 0,
+          background: 'var(--panel)', borderLeft: '1px solid var(--border)',
+          display: 'flex', flexDirection: 'column', zIndex: 5,
+          boxShadow: '-8px 0 24px rgba(0,0,0,0.2)'
+        }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Ic.Sparkle />
+              <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-1)' }}>Artifact Canvas</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => {
+                // Submit canvas edits to context
+                setActiveTab('chat');
+                const prompt = `I've updated the canvas. Please review my edits:\n\n\`\`\`\n${canvasContent}\n\`\`\``;
+                const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+                setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content: prompt, time: now }]);
+                setTimeout(() => setInput(prompt), 100);
+              }} style={{ padding: '4px 12px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>Sync to Chat</button>
+              <button onClick={() => setCanvasOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-2)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                <svg width="16" height="16" viewBox="0 0 14 14" fill="none"><path d="M10.5 3.5L3.5 10.5M3.5 3.5l7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            </div>
+          </div>
+          <textarea
+            value={canvasContent}
+            onChange={e => setCanvasContent(e.target.value)}
+            style={{
+              flex: 1, padding: 20, background: 'transparent', color: 'var(--text-1)',
+              fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6, border: 'none', outline: 'none', resize: 'none'
+            }}
+          />
+        </aside>
+      )}
+
       {rightVisible && (
         <RightPanel
           model={selectedModel} setModel={setSelectedModel}
           temperature={temperature} setTemperature={setTemperature}
           maxTokens={maxTokens} setMaxTokens={setMaxTokens}
+          systemPrompt={systemPrompt} setSystemPrompt={setSystemPrompt}
           totalTokens={totalTokens}
+          messageCount={messages.length}
           localModels={localModels}
           recommendedModels={recommendedModels}
+          activeContext={[]}
         />
+      )}
+      
+      {/* Legal Consent Overlay */}
+      {legalConsent === null && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }}>
+          <div style={{
+            background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 12,
+            width: 480, maxWidth: '90%', padding: 32, boxShadow: '0 12px 48px rgba(0,0,0,0.5)',
+            display: 'flex', flexDirection: 'column', gap: 16
+          }}>
+            <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-1)', margin: 0 }}>Welcome to LocAi</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, margin: 0 }}>
+              Before you start, please review our legal terms. LocAi offers powerful offline AI capabilities along with optional online features (like model downloads and updates).
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 0', borderTop: '1px solid var(--border-soft)', borderBottom: '1px solid var(--border-soft)' }}>
+              <a href="#" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>End User License Agreement</a>
+              <a href="#" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>Terms & Conditions</a>
+              <a href="#" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>Privacy Policy</a>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5, margin: 0 }}>
+              By accepting, you agree to these terms. If you decline, all online capabilities will be disabled and LocAi will run in offline-only mode.
+            </p>
+            <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+              <button
+                onClick={() => { localStorage.setItem('locai_legal_consent', 'false'); setLegalConsent('false') }}
+                style={{ flex: 1, padding: '10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-1)', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
+              >
+                Decline (Offline Only)
+              </button>
+              <button
+                onClick={() => { localStorage.setItem('locai_legal_consent', 'true'); setLegalConsent('true') }}
+                style={{ flex: 1, padding: '10px', background: 'var(--accent)', border: 'none', borderRadius: 8, color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
+              >
+                Accept Terms
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

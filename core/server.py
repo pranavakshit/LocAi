@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
+__version__ = "v1.1.0"
+
 app = FastAPI()
 
 app.add_middleware(
@@ -28,6 +30,10 @@ CONFIG_FILE = "config.json"
 
 class ChatRequest(BaseModel):
     messages: list[dict[str, str]]
+    session_id: str | None = None
+    temperature: float | None = None
+    max_tokens: int | None = None
+    system_prompt: str | None = None
 
 class ModelRequest(BaseModel):
     model: str
@@ -47,6 +53,10 @@ def set_model(model):
         json.dump({"model": model}, f)
 
 
+
+@app.get("/version")
+def get_version():
+    return {"version": __version__}
 
 @app.get("/model")
 def current_model():
@@ -82,24 +92,35 @@ def chat_endpoint(req: ChatRequest):
     event_bus.subscribe(EVENT_TOKEN_GENERATED, on_token)
     event_bus.subscribe(EVENT_CHAT_FINISHED, on_finish)
     
+    # Save the user's message if session_id is provided
+    if req.session_id and len(req.messages) > 0:
+        store.append_message(req.session_id, req.messages[-1])
+
     # Emit the start event to kick off the router in the background
     event_bus.emit(EVENT_CHAT_STARTED, {
         "request_id": request_id, 
         "messages": req.messages, 
-        "model": get_model()
+        "model": get_model(),
+        "session_id": req.session_id,
+        "temperature": req.temperature,
+        "max_tokens": req.max_tokens,
+        "system_prompt": req.system_prompt
     })
 
     def generator():
+        full_response = ""
         try:
             while True:
                 token = token_queue.get()
                 if token is None:
                     break
+                full_response += token
                 yield token
                 if token: 
                     yield ""  # 🔥 forces flush
         finally:
-            # Cleanup subscriptions when the stream closes or disconnects
+            if req.session_id and full_response:
+                store.append_message(req.session_id, {"role": "assistant", "content": full_response})
             event_bus.unsubscribe(EVENT_TOKEN_GENERATED, on_token)
             event_bus.unsubscribe(EVENT_CHAT_FINISHED, on_finish)
 
@@ -213,14 +234,47 @@ def get_session(sess_id: str):
 @app.get("/update/check")
 def check_update():
     import requests
+    import time
+    
+    config = store.get_config()
+    last_check = config.get("last_update_check", 0)
+    current_time = time.time()
+    
+    # 15 days = 15 * 24 * 60 * 60 = 1296000 seconds
+    if current_time - last_check < 1296000:
+        latest = config.get("last_known_latest_version")
+        update_available = latest and latest != __version__
+        return {"latest_version": latest, "url": config.get("last_known_latest_url"), "cached": True, "update_available": update_available}
+
     try:
         res = requests.get("https://api.github.com/repos/pranavakshit/LocAi/releases/latest", timeout=3)
         if res.status_code == 200:
             data = res.json()
-            return {"latest_version": data.get("tag_name"), "url": data.get("html_url")}
+            latest_version = data.get("tag_name")
+            url = data.get("html_url")
+            
+            store.update_config({
+                "last_update_check": current_time,
+                "last_known_latest_version": latest_version,
+                "last_known_latest_url": url
+            })
+            
+            update_available = latest_version and latest_version != __version__
+            return {"latest_version": latest_version, "url": url, "cached": False, "update_available": update_available}
     except Exception:
         pass
-    return {"latest_version": None}
+    return {"latest_version": None, "cached": False, "update_available": False}
+
+@app.get("/config")
+def get_config():
+    return store.get_config()
+
+class ConfigUpdateRequest(BaseModel):
+    updates: dict
+
+@app.post("/config")
+def update_config(req: ConfigUpdateRequest):
+    return store.update_config(req.updates)
 
 # Serve the React UI static build in production
 dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ui', 'dist'))

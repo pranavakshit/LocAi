@@ -9,11 +9,15 @@ Started as a simple idea: run a local model and talk to it. Now evolving into a 
 *   **Agentic Autonomous Execution**: Robust ReAct loop in the backend capable of executing tools on your machine.
 *   **Projects & Workspaces**: Sandboxed workspaces linked directly to local directories.
 *   **Next-Generation React Interface**: Gorgeous React SPA bundled with `pywebview` for native desktop performance.
+*   **Artifact Canvas & Playground**: Built-in code editor for debugging and a sliding Artifact Canvas for rendering markdown and code snippets seamlessly.
+*   **Git Integration**: Issue git commands (commit, push) directly to the AI through the UI.
+*   **Local Models Manager**: Dedicated hub to manage and download models locally (e.g., HuggingFace, Ollama integrations).
 *   **Event-Driven Architecture**: Scalable, capability-driven backend featuring a lightweight internal Pub/Sub Event Bus.
 *   **Multi-Session Chat History**: Conversations are safely persisted to disk and easily accessible.
 *   **Native File Attachments**: Seamlessly inject local documents into your prompt context.
 *   **Decoupled Headless Runtime**: Dual-mode `LocAi.exe` handles both the UI and background daemon, providing a System Tray icon for persistence.
 *   **Auto Updates**: Checks GitHub releases for updates and notifies the user directly in the UI.
+*   **Legal Consent System**: Onboarding system to review offline vs online data handling via `PRIVACY.md` and `TERMS.md`.
 
 ## Structure
 

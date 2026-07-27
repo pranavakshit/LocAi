@@ -1,22 +1,24 @@
 import webview
 import sys
-import tkinter as tk
-from tkinter import filedialog
 
 class Api:
     def open_file_dialog(self):
-        root = tk.Tk()
-        root.attributes("-topmost", True)
-        root.withdraw()
-        file_path = filedialog.askopenfilename()
-        return file_path or None
+        window = webview.active_window()
+        if not window:
+            return None
+        result = window.create_file_dialog(webview.OPEN_DIALOG)
+        if result and len(result) > 0:
+            return result[0]
+        return None
 
     def open_folder_dialog(self):
-        root = tk.Tk()
-        root.attributes("-topmost", True)
-        root.withdraw()
-        folder_path = filedialog.askdirectory()
-        return folder_path or None
+        window = webview.active_window()
+        if not window:
+            return None
+        result = window.create_file_dialog(webview.FOLDER_DIALOG)
+        if result and len(result) > 0:
+            return result[0]
+        return None
         
     def open_url(self, url):
         import webbrowser

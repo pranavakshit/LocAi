@@ -15,7 +15,11 @@ package "LocAi Core (Python Backend)" {
 
 package "Client Layer" {
   [Native UI Wrapper\n(modern_app.py)] as gui <<pywebview>>
-  [React SPA\n(ui/)] as react <<Frontend>>
+  package "React SPA (ui/)" {
+    [UI Core\n(App.tsx)] as react <<Frontend>>
+    [Artifact Canvas\nPlayground] as canvas <<Component>>
+    [Models Manager] as models <<Component>>
+  }
   [CLI] as cli <<Component>>
 }
 
