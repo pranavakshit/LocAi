@@ -11,6 +11,19 @@ from core.events import event_bus, EVENT_CHAT_STARTED, EVENT_TOKEN_GENERATED, EV
 from core.routers import chat_router
 from core.store import store
 
+# v2 Initialization
+from core.db.schema import init_db
+from core.db.repository import ConversationRepository
+from core.services.conversation_service import ConversationService
+from core.db.migrator import LegacyMigrator
+
+_user_profile = os.environ.get("USERPROFILE", os.path.expanduser("~"))
+_db_path = os.path.join(_user_profile, "LocAi", "userdata", "locai_v2.db")
+init_db(_db_path)
+v2_repo = ConversationRepository(_db_path)
+v2_service = ConversationService(v2_repo)
+LegacyMigrator(v2_service).run()
+
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
