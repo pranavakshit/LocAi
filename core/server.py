@@ -9,7 +9,7 @@ import queue
 # Import the EventBus and routers to ensure they start listening
 from core.events import event_bus, EVENT_CHAT_STARTED, EVENT_TOKEN_GENERATED, EVENT_CHAT_FINISHED
 from core.routers import chat_router
-from core.store import store
+from core.settings import settings
 
 # v2 Initialization
 from core.db.schema import init_db
@@ -130,9 +130,6 @@ def chat_endpoint(req: ChatRequest):
         attached_matches = re.findall(r'\[Attached: (.*?)\]', user_msg_data.get("content", ""))
         for match in attached_matches:
             v2_attachment.save_attachment(req.session_id, v2_msg.id, match.strip())
-        
-        # Legacy store (kept temporarily for backwards compatibility)
-        store.append_message(req.session_id, user_msg_data)
 
     # Emit the start event to kick off the router in the background
     event_bus.emit(EVENT_CHAT_STARTED, {
@@ -158,7 +155,9 @@ def chat_endpoint(req: ChatRequest):
                     yield ""  # 🔥 forces flush
         finally:
             if req.session_id and full_response:
-                from core.models.conversation import Message as V2Message
+                from core.models.conversation import Message as V2Message, Artifact
+                import re, os, hashlib
+                
                 v2_ast_msg = V2Message(
                     conversation_id=req.session_id,
                     role="assistant",
@@ -166,8 +165,34 @@ def chat_endpoint(req: ChatRequest):
                 )
                 v2_service.append_message(req.session_id, v2_ast_msg)
                 
-                # Legacy store
-                store.append_message(req.session_id, {"role": "assistant", "content": full_response})
+                # Artifact Extraction (Phase 9)
+                code_blocks = re.findall(r'```(\w*)\n(.*?)```', full_response, re.DOTALL)
+                for idx, (lang, code) in enumerate(code_blocks):
+                    lang = lang.strip() or "txt"
+                    filename = f"artifact_{idx+1}.{lang}"
+                    content_hash = hashlib.md5(code.encode()).hexdigest()[:8]
+                    
+                    artifacts_dir = os.path.join(_user_profile, "LocAi", "userdata", "conversations", req.session_id, "artifacts")
+                    os.makedirs(artifacts_dir, exist_ok=True)
+                    
+                    file_path = os.path.join(artifacts_dir, f"{content_hash}_{filename}")
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(code)
+                        
+                    art = Artifact(
+                        message_id=v2_ast_msg.id,
+                        filename=filename,
+                        storage_path=file_path,
+                        type="code"
+                    )
+                    v2_service.attach_artifact(req.session_id, art)
+                
+                # Automatic Titles (Phase 10)
+                # If this is the first assistant message, generate a title based on the first user message
+                if len(req.messages) == 1:
+                    first_msg = req.messages[0].get("content", "")
+                    title = first_msg[:25].strip() + ("..." if len(first_msg) > 25 else "")
+                    v2_service.rename_conversation(req.session_id, title)
                 
             event_bus.unsubscribe(EVENT_TOKEN_GENERATED, on_token)
             event_bus.unsubscribe(EVENT_CHAT_FINISHED, on_finish)
@@ -255,29 +280,11 @@ class ProjectRequest(BaseModel):
 
 @app.post("/projects")
 def create_project(req: ProjectRequest):
-    return store.create_project(req.name, req.root_path)
+    return settings.create_project(req.name, req.root_path)
 
 @app.get("/projects")
 def list_projects():
-    return {"projects": store.list_projects()}
-
-class SessionRequest(BaseModel):
-    name: str
-    project_id: str | None = None
-
-@app.post("/sessions")
-def create_session(req: SessionRequest):
-    return store.create_session(req.name, req.project_id)
-
-@app.get("/sessions")
-def list_sessions():
-    return {"sessions": store.list_sessions()}
-
-@app.get("/sessions/{sess_id}")
-def get_session(sess_id: str):
-    sess = store.get_session(sess_id)
-    if sess: return sess
-    return {"error": "Session not found"}
+    return {"projects": settings.list_projects()}
 
 # ==========================================
 # v2 Conversation API
@@ -321,7 +328,7 @@ def check_update():
     import requests
     import time
     
-    config = store.get_config()
+    config = settings.get_config()
     last_check = config.get("last_update_check", 0)
     current_time = time.time()
     
@@ -338,7 +345,7 @@ def check_update():
             latest_version = data.get("tag_name")
             url = data.get("html_url")
             
-            store.update_config({
+            settings.update_config({
                 "last_update_check": current_time,
                 "last_known_latest_version": latest_version,
                 "last_known_latest_url": url
@@ -352,14 +359,14 @@ def check_update():
 
 @app.get("/config")
 def get_config():
-    return store.get_config()
+    return settings.get_config()
 
 class ConfigUpdateRequest(BaseModel):
     updates: dict
 
 @app.post("/config")
 def update_config(req: ConfigUpdateRequest):
-    return store.update_config(req.updates)
+    return settings.update_config(req.updates)
 
 # Serve the React UI static build in production
 dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ui', 'dist'))

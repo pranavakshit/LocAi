@@ -1015,11 +1015,11 @@ function SettingsView() {
   const [alwaysForcePush, setAlwaysForcePush] = useState(false)
   const [draftPrs, setDraftPrs] = useState(false)
   const [reviewDelivery, setReviewDelivery] = useState('Inline')
-  const [commitInstructions, setCommitInstructions] = useState('')
-  const [prInstructions, setPrInstructions] = useState('')
-
   // Updates State
   const [updateFreq, setUpdateFreq] = useState(() => localStorage.getItem('locai_update_frequency') || 'monthly')
+
+  // Theme State
+  const [theme, setTheme] = useState('system')
 
   useEffect(() => {
     fetch("http://localhost:8000/config")
@@ -1036,6 +1036,7 @@ function SettingsView() {
         if (data.reviewDelivery) setReviewDelivery(data.reviewDelivery)
         if (data.commitInstructions) setCommitInstructions(data.commitInstructions)
         if (data.prInstructions) setPrInstructions(data.prInstructions)
+        if (data.theme) setTheme(data.theme)
       })
       .catch(console.error)
   }, [])
@@ -1045,8 +1046,16 @@ function SettingsView() {
     const config = {
       personality, customInstructions, enableMemories, allowToolMemory,
       branchPrefix, prMergeMethod, alwaysForcePush, draftPrs, reviewDelivery,
-      commitInstructions, prInstructions
+      commitInstructions, prInstructions, theme
     }
+    
+    // Apply theme immediately
+    if (theme === 'light' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches)) {
+      document.documentElement.setAttribute('data-theme', 'light')
+    } else {
+      document.documentElement.removeAttribute('data-theme')
+    }
+    
     try {
       await fetch("http://localhost:8000/config", {
         method: "POST",
@@ -1125,6 +1134,9 @@ function SettingsView() {
 
         <SectionTitle title="Updates" />
         <Select label="Check for updates" value={updateFreq} onChange={setUpdateFreq} options={['1 day', '3 days', '5 days', 'weekly', 'fortnightly', 'monthly']} />
+
+        <SectionTitle title="Appearance" />
+        <Select label="Theme" value={theme} onChange={setTheme} options={['system', 'dark', 'light']} />
 
         <SectionTitle title="Legal & About" />
         <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
@@ -1427,6 +1439,18 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    fetch("http://localhost:8000/config")
+      .then(res => res.json())
+      .then(data => {
+        const t = data.theme || 'system'
+        if (t === 'light' || (t === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches)) {
+          document.documentElement.setAttribute('data-theme', 'light')
+        } else {
+          document.documentElement.removeAttribute('data-theme')
+        }
+      })
+      .catch(console.error)
+      
     fetch("http://localhost:8000/model")
       .then(res => res.json())
       .then(data => setSelectedModel(data.model))

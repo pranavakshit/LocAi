@@ -9,7 +9,8 @@ package "LocAi Core (Python Backend)" {
   [Chat Router\n(routers.py)]      as router     <<Component>>
   [Context Engine\n(context.py)]   as context    <<Component>>
   [Inference Provider\n(providers.py)] as provider <<Component>>
-  [Data Store\n(store.py)]         as store      <<Component>>
+  [Settings Manager\n(settings.py)] as settings  <<Component>>
+  [Conversation Service\n(services/)]  as convservice <<Service>>
   [Agent Tools\n(tools.py)]        as tools      <<Component>>
 }
 
@@ -33,7 +34,8 @@ package "Runtime & Bootstrapping" {
 ' ==========================================================
 database "User Data\n(%USERPROFILE%\\LocAi\\userdata\\)" {
   node "projects.json" as projects
-  node "sessions.json" as sessions
+  node "config.json" as config
+  database "locai_v2.db\n(SQLite + FTS5)" as db_v2
   node "local_rag_db\n(ChromaDB)" as db
 }
 
@@ -52,7 +54,10 @@ gui --> react : Renders web assets
 react --> server : HTTP/WebSocket (Port 8000)
 cli --> server : HTTP Commands
 
-server --> store : Manage Sessions & Projects
+server --> settings : Manage Settings & Projects
+server --> convservice : Manage V2 Conversations
+convservice --> db_v2 : Read/Write SQLite
+
 server --> eventbus : Emits API Events
 eventbus <--> router : Subscribes to ChatRequests
 
@@ -62,10 +67,10 @@ router --> provider : Streams LLM tokens
 provider --> ollama : Sends generation request
 
 router --> tools : Executes Autonomous Agent Tools (ReAct)
-tools --> store : Edits local filesystem files
+tools --> settings : Accesses workspace path
 
-store --> projects : Reads/Writes
-store --> sessions : Reads/Writes
+settings --> projects : Reads/Writes
+settings --> config : Reads/Writes
 
 ' ==========================================================
 ' Additional Notes

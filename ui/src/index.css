@@ -23,6 +23,26 @@
   --font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
 }
 
+[data-theme='light'] {
+  --bg:           #f7f9fa;
+  --panel:        #ffffff;
+  --surface:      #f0f3f6;
+  --surface-2:    #e5e8eb;
+  --border:       #e0e4e8;
+  --border-soft:  #ebedf0;
+  --accent:       #3b82f6;
+  --accent-glow:  rgba(59, 130, 246, 0.12);
+  --accent-dim:   rgba(59, 130, 246, 0.06);
+  --purple:       #7c3aed;
+  --green:        #10b981;
+  --amber:        #f59e0b;
+  --red:          #ef4444;
+  --cyan:         #06b6d4;
+  --text-1:       #111827;
+  --text-2:       #4b5563;
+  --text-3:       #9ca3af;
+}
+
 body {
   margin: 0;
   background: var(--bg);
