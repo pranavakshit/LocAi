@@ -16,12 +16,15 @@ from core.db.schema import init_db
 from core.db.repository import ConversationRepository
 from core.services.conversation_service import ConversationService
 from core.db.migrator import LegacyMigrator
+from core.services.attachment_service import AttachmentService
+import re
 
 _user_profile = os.environ.get("USERPROFILE", os.path.expanduser("~"))
 _db_path = os.path.join(_user_profile, "LocAi", "userdata", "locai_v2.db")
 init_db(_db_path)
 v2_repo = ConversationRepository(_db_path)
 v2_service = ConversationService(v2_repo)
+v2_attachment = AttachmentService(v2_service)
 LegacyMigrator(v2_service).run()
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -122,6 +125,11 @@ def chat_endpoint(req: ChatRequest):
             content=user_msg_data.get("content", "")
         )
         v2_service.append_message(req.session_id, v2_msg)
+        
+        # Parse and process attachments
+        attached_matches = re.findall(r'\[Attached: (.*?)\]', user_msg_data.get("content", ""))
+        for match in attached_matches:
+            v2_attachment.save_attachment(req.session_id, v2_msg.id, match.strip())
         
         # Legacy store (kept temporarily for backwards compatibility)
         store.append_message(req.session_id, user_msg_data)
