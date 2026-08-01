@@ -242,6 +242,8 @@ interface LeftPanelProps {
   sessions: any[]
   activeSessionId: string | null
   onSessionSelect: (id: string) => void
+  onSessionDelete: (id: string) => void
+  onSessionRename: (id: string, newTitle: string) => void
 }
 
 const NAV_ITEMS: { id: NavSection; label: string; Icon: () => React.ReactElement }[] = [
@@ -253,7 +255,7 @@ const NAV_ITEMS: { id: NavSection; label: string; Icon: () => React.ReactElement
   { id: 'config', label: 'Settings', Icon: Ic.Cog },
 ]
 
-function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, activeSessionId, onSessionSelect }: LeftPanelProps) {
+function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, activeSessionId, onSessionSelect, onSessionDelete, onSessionRename }: LeftPanelProps) {
   const w = collapsed ? 56 : 228
 
   return (
@@ -323,11 +325,10 @@ function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, act
           <div style={{ marginTop: 16, borderTop: '1px solid var(--border-soft)', paddingTop: 10 }}>
             <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0 10px 6px', fontFamily: 'var(--font-mono)' }}>Recent</div>
             {sessions.map(s => (
-              <button
+              <div
                 key={s.id}
-                onClick={() => onSessionSelect(s.id)}
                 style={{
-                  display: 'block', width: '100%', textAlign: 'left',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '6px 10px', borderRadius: 6, border: 'none',
                   background: activeSessionId === s.id ? 'var(--surface-2)' : 'transparent',
                   cursor: 'pointer',
@@ -335,15 +336,33 @@ function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, act
                   fontSize: 12, lineHeight: 1.4,
                   fontFamily: 'var(--font-sans)', marginBottom: 1,
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-1)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'var(--surface)'; (e.currentTarget as HTMLDivElement).style.color = 'var(--text-1)' }}
                 onMouseLeave={e => { 
-                  (e.currentTarget as HTMLButtonElement).style.background = activeSessionId === s.id ? 'var(--surface-2)' : 'transparent'; 
-                  (e.currentTarget as HTMLButtonElement).style.color = activeSessionId === s.id ? 'var(--text-1)' : 'var(--text-2)' 
+                  (e.currentTarget as HTMLDivElement).style.background = activeSessionId === s.id ? 'var(--surface-2)' : 'transparent'; 
+                  (e.currentTarget as HTMLDivElement).style.color = activeSessionId === s.id ? 'var(--text-1)' : 'var(--text-2)' 
                 }}
               >
-                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.name || 'Untitled Session'}</div>
-                <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>{new Date((s.updated_at || s.created_at || 0) * (typeof s.updated_at === 'string' ? 1 : 1000)).toLocaleDateString()}</div>
-              </button>
+                <div style={{ flex: 1, overflow: 'hidden' }} onClick={() => onSessionSelect(s.id)}>
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.name || 'Untitled Session'}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>
+                    {new Date(typeof (s.updated_at || s.created_at) === 'string' ? (s.updated_at || s.created_at) : (s.updated_at || s.created_at || 0) * 1000).toLocaleDateString()}
+                  </div>
+                </div>
+                {activeSessionId === s.id && (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); const t = prompt("Rename to:", s.title); if(t) onSessionRename(s.id, t); }} 
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', cursor: 'pointer', fontSize: 10 }} title="Rename">
+                      R
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); if(confirm("Delete this conversation?")) onSessionDelete(s.id); }} 
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', cursor: 'pointer', fontSize: 10 }} title="Delete">
+                      X
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -1414,6 +1433,28 @@ export default function App() {
       .catch(console.error)
   }, [])
 
+  const deleteSession = async (id: string) => {
+    try {
+      await fetch(`http://localhost:8000/v2/conversations/${id}`, { method: "DELETE" })
+      if (activeSessionId === id) {
+        setActiveSessionId(null)
+        setMessages([{ id: '1', role: 'assistant', content: 'Hello! I am LocAi. How can I help you today?', time: 'Now' }])
+      }
+      fetch("http://localhost:8000/v2/conversations").then(r => r.json()).then(d => setSessions(d.conversations || d.sessions || []))
+    } catch(e) {}
+  }
+  
+  const renameSession = async (id: string, newTitle: string) => {
+    try {
+      await fetch(`http://localhost:8000/v2/conversations/${id}/title`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle })
+      })
+      fetch("http://localhost:8000/v2/conversations").then(r => r.json()).then(d => setSessions(d.conversations || d.sessions || []))
+    } catch(e) {}
+  }
+
   const sendMessage = async () => {
     if (!input.trim()) return
     const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -1518,6 +1559,7 @@ export default function App() {
         collapsed={leftCollapsed} onToggle={() => setLeftCollapsed(p => !p)} 
         activeNav={activeNav} setActiveNav={handleNavSelect} 
         sessions={sessions} activeSessionId={activeSessionId} onSessionSelect={loadSession}
+        onSessionDelete={deleteSession} onSessionRename={renameSession}
       />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         <TabBar 

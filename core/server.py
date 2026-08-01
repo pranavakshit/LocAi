@@ -283,6 +283,10 @@ def get_session(sess_id: str):
 # v2 Conversation API
 # ==========================================
 
+class V2CreateConversationRequest(BaseModel):
+    title: str = "New Conversation"
+    project_id: str | None = None
+
 @app.get("/v2/conversations")
 def v2_list_conversations():
     return {"conversations": [c.model_dump() for c in v2_service.search_conversation("")]}
@@ -295,13 +299,21 @@ def v2_get_conversation(conv_id: str):
     return {"error": "Conversation not found"}
 
 @app.post("/v2/conversations")
-def v2_create_conversation(title: str = "New Conversation", project_id: str | None = None):
-    conv = v2_service.create_conversation(title, project_id)
+def v2_create_conversation(req: V2CreateConversationRequest):
+    conv = v2_service.create_conversation(req.title, req.project_id)
     return conv.model_dump()
 
 @app.delete("/v2/conversations/{conv_id}")
 def v2_delete_conversation(conv_id: str):
     v2_service.delete_conversation(conv_id)
+    return {"status": "ok"}
+
+class V2RenameRequest(BaseModel):
+    title: str
+
+@app.put("/v2/conversations/{conv_id}/title")
+def v2_rename_conversation(conv_id: str, req: V2RenameRequest):
+    v2_service.rename_conversation(conv_id, req.title)
     return {"status": "ok"}
 
 @app.get("/update/check")
