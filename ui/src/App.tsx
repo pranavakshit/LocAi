@@ -148,6 +148,16 @@ const Ic = {
       <path d="M6.5 1L7.8 5.2l4.2 1.3-4.2 1.3L6.5 12 5.2 7.8 1 6.5l4.2-1.3L6.5 1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
     </svg>
   ),
+  Pen: () => (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <path d="M9 1.5l2.5 2.5L3 12.5H.5v-2.5L9 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+    </svg>
+  ),
+  Trash: () => (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <path d="M2.5 3h8M4.5 3V1.5h4V3m-4.5 8h5a1 1 0 001-1V4h-7v6a1 1 0 001 1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+    </svg>
+  ),
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -257,6 +267,7 @@ const NAV_ITEMS: { id: NavSection; label: string; Icon: () => React.ReactElement
 
 function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, activeSessionId, onSessionSelect, onSessionDelete, onSessionRename }: LeftPanelProps) {
   const w = collapsed ? 56 : 228
+  const [hoveredSession, setHoveredSession] = useState<string | null>(null)
 
   return (
     <aside
@@ -336,10 +347,15 @@ function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, act
                   fontSize: 12, lineHeight: 1.4,
                   fontFamily: 'var(--font-sans)', marginBottom: 1,
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'var(--surface)'; (e.currentTarget as HTMLDivElement).style.color = 'var(--text-1)' }}
+                onMouseEnter={e => { 
+                  (e.currentTarget as HTMLDivElement).style.background = 'var(--surface)'; 
+                  (e.currentTarget as HTMLDivElement).style.color = 'var(--text-1)';
+                  setHoveredSession(s.id);
+                }}
                 onMouseLeave={e => { 
                   (e.currentTarget as HTMLDivElement).style.background = activeSessionId === s.id ? 'var(--surface-2)' : 'transparent'; 
-                  (e.currentTarget as HTMLDivElement).style.color = activeSessionId === s.id ? 'var(--text-1)' : 'var(--text-2)' 
+                  (e.currentTarget as HTMLDivElement).style.color = activeSessionId === s.id ? 'var(--text-1)' : 'var(--text-2)';
+                  setHoveredSession(null);
                 }}
               >
                 <div style={{ flex: 1, overflow: 'hidden' }} onClick={() => onSessionSelect(s.id)}>
@@ -348,17 +364,17 @@ function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, act
                     {new Date(typeof (s.updated_at || s.created_at) === 'string' ? (s.updated_at || s.created_at) : (s.updated_at || s.created_at || 0) * 1000).toLocaleDateString()}
                   </div>
                 </div>
-                {activeSessionId === s.id && (
+                {(activeSessionId === s.id || hoveredSession === s.id) && (
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button 
                       onClick={(e) => { e.stopPropagation(); const t = prompt("Rename to:", s.title); if(t) onSessionRename(s.id, t); }} 
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', cursor: 'pointer', fontSize: 10 }} title="Rename">
-                      R
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }} title="Rename">
+                      <Ic.Pen />
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); if(confirm("Delete this conversation?")) onSessionDelete(s.id); }} 
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', cursor: 'pointer', fontSize: 10 }} title="Delete">
-                      X
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }} title="Delete">
+                      <Ic.Trash />
                     </button>
                   </div>
                 )}
