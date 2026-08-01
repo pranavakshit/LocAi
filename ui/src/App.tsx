@@ -18,6 +18,7 @@ interface Message {
   timestamp?: string
   tokens?: number
   artifacts?: { id: string, filename: string, type: string }[]
+  status?: string
 }
 
 // ─── Sample data ───────────────────────────────────────────────────────────────
@@ -392,7 +393,7 @@ function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, act
       }}>
         <div style={{
           width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-          background: 'linear-gradient(135deg, #1e3a5f 0%, #2d1b69 100%)',
+          background: 'var(--avatar-user)', color: 'var(--avatar-icon)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           border: '1px solid var(--border)',
         }}>
@@ -637,9 +638,8 @@ function MessageBubble({ msg }: { msg: Message }) {
         {/* Avatar */}
         <div style={{
           width: 28, height: 28, borderRadius: 7, flexShrink: 0, marginTop: 2,
-          background: isUser
-            ? 'linear-gradient(135deg, #1e3a5f, #2d1b69)'
-            : 'linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%)',
+          background: isUser ? 'var(--avatar-user)' : 'var(--avatar-ai)',
+          color: 'var(--avatar-icon)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           border: '1px solid var(--border)',
           boxShadow: isUser ? 'none' : '0 0 10px var(--accent-glow)',
@@ -672,6 +672,13 @@ function MessageBubble({ msg }: { msg: Message }) {
                     <span style={{ fontSize: 11, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' }}>{art.filename}</span>
                   </div>
                 ))}
+              </div>
+            )}
+            {msg.status && (
+              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent)', fontSize: 12, fontWeight: 500, opacity: 0.8, animation: 'pulse 1.5s infinite' }}>
+                <style>{`@keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }`}</style>
+                <Ic.Sparkle />
+                {msg.status}
               </div>
             )}
           </div>
@@ -1026,6 +1033,8 @@ function SettingsView() {
   const [alwaysForcePush, setAlwaysForcePush] = useState(false)
   const [draftPrs, setDraftPrs] = useState(false)
   const [reviewDelivery, setReviewDelivery] = useState('Inline')
+  const [commitInstructions, setCommitInstructions] = useState('')
+  const [prInstructions, setPrInstructions] = useState('')
   // Updates State
   const [updateFreq, setUpdateFreq] = useState(() => localStorage.getItem('locai_update_frequency') || 'monthly')
 
@@ -1151,9 +1160,9 @@ function SettingsView() {
 
         <SectionTitle title="Legal & About" />
         <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
-          <a href="#" style={{ fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none' }}>End User License Agreement</a>
-          <a href="#" style={{ fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none' }}>Terms & Conditions</a>
-          <a href="#" style={{ fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none' }}>Privacy Policy</a>
+          <a href="https://github.com/pranavakshit/LocAi/blob/main/docs/legal/EULA.md" target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none' }}>End User License Agreement</a>
+          <a href="https://github.com/pranavakshit/LocAi/blob/main/docs/legal/TERMS.md" target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none' }}>Terms & Conditions</a>
+          <a href="https://github.com/pranavakshit/LocAi/blob/main/docs/legal/PRIVACY.md" target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none' }}>Privacy Policy</a>
         </div>
 
         <button onClick={handleSave} style={{
@@ -1561,14 +1570,31 @@ export default function App() {
 
       if (reader) {
         let done = false;
+        let buffer = '';
         while (!done) {
           const { value, done: doneReading } = await reader.read();
           done = doneReading;
           if (value) {
-            const chunk = decoder.decode(value, { stream: true });
-            setMessages(prev => prev.map(msg => 
-              msg.id === assistantId ? { ...msg, content: msg.content + chunk } : msg
-            ));
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const data = JSON.parse(line);
+                if (data.type === 'token') {
+                  setMessages(prev => prev.map(msg => 
+                    msg.id === assistantId ? { ...msg, content: msg.content + data.content } : msg
+                  ));
+                } else if (data.type === 'status') {
+                  setMessages(prev => prev.map(msg => 
+                    msg.id === assistantId ? { ...msg, status: data.content || undefined } : msg
+                  ));
+                }
+              } catch(e) {
+                console.error("Parse error on line:", line, e);
+              }
+            }
           }
         }
       }

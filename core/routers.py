@@ -30,7 +30,8 @@ class ChatRouter:
 
         try:
             # 1. Instant feedback for Context Gathering
-            event_bus.emit(EVENT_TOKEN_GENERATED, {"request_id": request_id, "token": "*(Gathering context...)*\n\n"})
+            from core.events import EVENT_STATUS_UPDATE
+            event_bus.emit(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": "Gathering context..."})
             
             # 2. Gather Context
             user_query = messages[-1]["content"] if messages and messages[-1]["role"] == "user" else ""
@@ -49,6 +50,8 @@ class ChatRouter:
 
             # 4. Generate Tokens (ReAct Loop)
             max_iterations = 5
+            event_bus.emit(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": ""}) # Clear status before generation
+            
             for i in range(max_iterations):
                 full_response = ""
                 for token in self.inference_provider.chat_stream(model, messages):
@@ -64,12 +67,13 @@ class ChatRouter:
                 tool_name, args = parse_tool_call(full_response)
                 
                 if tool_name:
-                    event_bus.emit(EVENT_TOKEN_GENERATED, {"request_id": request_id, "token": f"\n\n*(Executing {tool_name}...)*\n\n"})
+                    event_bus.emit(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": f"Executing {tool_name}..."})
                     result = execute_tool(tool_name, args)
                     tool_response = f"<response:{tool_name}>\n{result}\n</response:{tool_name}>"
                     messages.append({"role": "user", "content": tool_response})
-                    event_bus.emit(EVENT_TOKEN_GENERATED, {"request_id": request_id, "token": f"{tool_response}\n\n*(Thinking...)*\n\n"})
+                    event_bus.emit(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": "Thinking..."})
                 else:
+                    event_bus.emit(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": ""})
                     break
                 
         except Exception as e:

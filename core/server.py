@@ -95,10 +95,16 @@ def chat_endpoint(req: ChatRequest):
     request_id = str(uuid.uuid4())
     token_queue = queue.Queue()
     
+    from core.events import EVENT_STATUS_UPDATE
+    
     # Callbacks to bridge the Event Bus back to this specific HTTP request
     def on_token(payload):
         if payload.get("request_id") == request_id:
-            token_queue.put(payload.get("token", ""))
+            token_queue.put({"type": "token", "content": payload.get("token", "")})
+            
+    def on_status(payload):
+        if payload.get("request_id") == request_id:
+            token_queue.put({"type": "status", "content": payload.get("status", "")})
             
     def on_finish(payload):
         if payload.get("request_id") == request_id:
@@ -106,6 +112,7 @@ def chat_endpoint(req: ChatRequest):
             
     # Subscribe to events
     event_bus.subscribe(EVENT_TOKEN_GENERATED, on_token)
+    event_bus.subscribe(EVENT_STATUS_UPDATE, on_status)
     event_bus.subscribe(EVENT_CHAT_FINISHED, on_finish)
     
     # Save the user's message if session_id is provided
@@ -143,16 +150,17 @@ def chat_endpoint(req: ChatRequest):
     })
 
     def generator():
+        import json
         full_response = ""
         try:
             while True:
-                token = token_queue.get()
-                if token is None:
+                item = token_queue.get()
+                if item is None:
                     break
-                full_response += token
-                yield token
-                if token: 
-                    yield ""  # 🔥 forces flush
+                if item["type"] == "token":
+                    full_response += item["content"]
+                yield json.dumps(item) + "\n"
+                yield ""  # 🔥 forces flush
         finally:
             if req.session_id and full_response:
                 from core.models.conversation import Message as V2Message, Artifact
@@ -195,9 +203,10 @@ def chat_endpoint(req: ChatRequest):
                     v2_service.rename_conversation(req.session_id, title)
                 
             event_bus.unsubscribe(EVENT_TOKEN_GENERATED, on_token)
+            event_bus.unsubscribe(EVENT_STATUS_UPDATE, on_status)
             event_bus.unsubscribe(EVENT_CHAT_FINISHED, on_finish)
 
-    return StreamingResponse(generator(), media_type="text/plain; charset=utf-8")
+    return StreamingResponse(generator(), media_type="application/x-ndjson")
 
 @app.get("/health")
 def health_check():

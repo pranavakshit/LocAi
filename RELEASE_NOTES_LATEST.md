@@ -1,13 +1,18 @@
-# LocAi v1.2.0 Release Notes
+# LocAi v2.0.0 Release Notes
 
-## 🐛 Bug Fixes
-* **PyInstaller Crash Resolved**: Completely eradicated `tkinter` dependencies from the launcher. The application now uses pywebview's native cross-platform file dialogs, resolving the startup crash caused by missing Tcl/Tk data directories.
-* **Dynamic Model Detection**: Fixed the UI chatbox which previously showed a hardcoded placeholder (`opus-4-8`). It now dynamically fetches and accurately displays the active engine model.
-* **Chat Tab Navigation**: Fixed an issue in the Left Panel where clicking a recent session would fetch the history but fail to switch the active UI tab. Clicking a recent session now instantly snaps the interface to the Chat view.
-* **Stale Version Tags**: Purged the outdated `v2.4.1 Pro` hardcoded text from the application header.
+## 🚀 Major Features & Architectural Overhaul
+* **SQLite & FTS5 Semantic Search**: Replaced the legacy `sessions.json` backend with a robust SQLite database running in WAL mode, ensuring atomic transactions and zero data corruption. Fast Text Search (FTS5) enables blazing fast retrieval.
+* **Intelligent File Attachments**: Introduced a robust file-attachment routing system. Files are now securely hashed and copied to a dedicated `brain` context directory. Even if you move your local files, LocAi retains the context flawlessly!
+* **Artifact Extraction Engine**: LocAi now parses markdown code blocks dynamically via the backend Event Bus. It intercepts code generation in real-time and physically saves them to `userdata/conversations/{id}/artifacts/` as standalone files.
+* **Dynamic Auto-Titles**: Implemented intelligent conversation naming. The first message sent in a new chat automatically triggers a backend routine that slices the prompt and renames the session tab organically.
+* **Dynamic Appearance & Theming**: Completely rebuilt the CSS token system to support dynamic Light, Dark, and System Default themes. Settings are natively persisted to the user configuration file.
+* **Artifact UI Canvas**: The React interface now tracks the `artifacts` array and visually renders generated code files directly under the message bubble with a clickable pill interface.
+* **Live Web Search**: Implemented a `WebSearchProvider` using `ddgs`. If a prompt contains trigger words like "search", "latest", or "news", LocAi autonomously queries the web and injects real-time information into the context!
+* **Dynamic NDJSON Streaming**: Migrated the `/chat` streaming protocol from plain text to Server-Sent NDJSON. The frontend now accurately parses metadata chunks and beautifully renders dynamic status indicators (e.g., *Gathering context...*) that cleanly disappear when token generation begins.
 
-## 📦 Build & Architecture
-* **Portable Executable**: Generated fresh standalone `LocAi-portable.exe` binaries with the new architecture.
-* **Architecture Documentation**: Documented the conversation and state management architecture following a comprehensive system audit.
+## 🛠 Cleanup & Deprecations
+* Deprecated and deleted the legacy `store.py` and its endpoints (`/sessions`).
+* Migrated configuration states to a dedicated `settings.py` module.
+* Unified the entire Event Bus and Conversation Router.
 
-*Enjoy a much smoother, crash-free native experience!*
+*Welcome to the true v2.0.0 autonomous agent experience!*
