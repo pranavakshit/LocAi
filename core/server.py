@@ -107,7 +107,24 @@ def chat_endpoint(req: ChatRequest):
     
     # Save the user's message if session_id is provided
     if req.session_id and len(req.messages) > 0:
-        store.append_message(req.session_id, req.messages[-1])
+        user_msg_data = req.messages[-1]
+        
+        # Load or create conversation in v2 DB
+        conv = v2_service.load_conversation(req.session_id)
+        if not conv:
+            conv = v2_service.create_conversation(title="New Chat")
+            req.session_id = conv.metadata.id
+            
+        from core.models.conversation import Message as V2Message
+        v2_msg = V2Message(
+            conversation_id=req.session_id,
+            role=user_msg_data.get("role", "user"),
+            content=user_msg_data.get("content", "")
+        )
+        v2_service.append_message(req.session_id, v2_msg)
+        
+        # Legacy store (kept temporarily for backwards compatibility)
+        store.append_message(req.session_id, user_msg_data)
 
     # Emit the start event to kick off the router in the background
     event_bus.emit(EVENT_CHAT_STARTED, {
@@ -133,7 +150,17 @@ def chat_endpoint(req: ChatRequest):
                     yield ""  # 🔥 forces flush
         finally:
             if req.session_id and full_response:
+                from core.models.conversation import Message as V2Message
+                v2_ast_msg = V2Message(
+                    conversation_id=req.session_id,
+                    role="assistant",
+                    content=full_response
+                )
+                v2_service.append_message(req.session_id, v2_ast_msg)
+                
+                # Legacy store
                 store.append_message(req.session_id, {"role": "assistant", "content": full_response})
+                
             event_bus.unsubscribe(EVENT_TOKEN_GENERATED, on_token)
             event_bus.unsubscribe(EVENT_CHAT_FINISHED, on_finish)
 
