@@ -17,6 +17,7 @@ interface Message {
   time?: string
   timestamp?: string
   tokens?: number
+  artifacts?: { id: string, filename: string, type: string }[]
 }
 
 // ─── Sample data ───────────────────────────────────────────────────────────────
@@ -663,6 +664,16 @@ function MessageBubble({ msg }: { msg: Message }) {
             borderRadius: isUser ? 10 : 0, padding: isUser ? '10px 14px' : 0,
           }}>
             {formatContent(msg.content)}
+            {msg.artifacts && msg.artifacts.length > 0 && (
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {msg.artifacts.map(art => (
+                  <div key={art.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6 }}>
+                    <span style={{ color: 'var(--accent)' }}><Ic.Code /></span>
+                    <span style={{ fontSize: 11, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' }}>{art.filename}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           {!isUser && (
             <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
@@ -1403,7 +1414,9 @@ export default function App() {
       const res = await fetch(`http://localhost:8000/v2/conversations/${id}`)
       const data = await res.json()
       if (data.messages) {
-        setMessages(data.messages)
+        const artifacts = data.artifacts || [];
+        const msgs = data.messages.map((m: any) => ({ ...m, artifacts: artifacts.filter((a: any) => a.message_id === m.id) }));
+        setMessages(msgs)
       }
     } catch(e) {
       console.error(e)
