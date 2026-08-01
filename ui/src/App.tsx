@@ -14,7 +14,8 @@ interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
-  time: string
+  time?: string
+  timestamp?: string
   tokens?: number
 }
 
@@ -340,8 +341,8 @@ function LeftPanel({ collapsed, onToggle, activeNav, setActiveNav, sessions, act
                   (e.currentTarget as HTMLButtonElement).style.color = activeSessionId === s.id ? 'var(--text-1)' : 'var(--text-2)' 
                 }}
               >
-                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name || 'Untitled Session'}</div>
-                <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>{new Date(s.updated_at * 1000).toLocaleDateString()}</div>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.name || 'Untitled Session'}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>{new Date((s.updated_at || s.created_at || 0) * (typeof s.updated_at === 'string' ? 1 : 1000)).toLocaleDateString()}</div>
               </button>
             ))}
           </div>
@@ -616,7 +617,9 @@ function MessageBubble({ msg }: { msg: Message }) {
             <span style={{ fontSize: 12, fontWeight: 600, color: isUser ? 'var(--text-2)' : 'var(--accent)' }}>
               {isUser ? 'You' : 'LocAi'}
             </span>
-            <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>{msg.time}</span>
+            <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+              {msg.time || (msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Now')}
+            </span>
             {msg.tokens && <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', background: 'var(--surface)', padding: '1px 5px', borderRadius: 4 }}>{msg.tokens} tok</span>}
           </div>
           <div style={{
@@ -1331,9 +1334,9 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch("http://localhost:8000/sessions")
+    fetch("http://localhost:8000/v2/conversations")
       .then(res => res.json())
-      .then(data => setSessions(data.sessions || []))
+      .then(data => setSessions(data.conversations || data.sessions || []))
       .catch(console.error)
       
     fetch("http://localhost:8000/update/check")
@@ -1350,7 +1353,7 @@ export default function App() {
     setActiveSessionId(id)
     setActiveTab('chat')
     try {
-      const res = await fetch(`http://localhost:8000/sessions/${id}`)
+      const res = await fetch(`http://localhost:8000/v2/conversations/${id}`)
       const data = await res.json()
       if (data.messages) {
         setMessages(data.messages)
@@ -1424,17 +1427,17 @@ export default function App() {
       // Create a new session with the first user message as title (truncated)
       const title = userContent.substring(0, 25) + (userContent.length > 25 ? "..." : "")
       try {
-        const res = await fetch("http://localhost:8000/sessions", {
+        const res = await fetch("http://localhost:8000/v2/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: title })
+          body: JSON.stringify({ title: title })
         })
         const data = await res.json()
-        if (data.session_id) {
-          currentSessionId = data.session_id
+        if (data.metadata && data.metadata.id) {
+          currentSessionId = data.metadata.id
           setActiveSessionId(currentSessionId)
           // Also fetch updated sessions list to populate sidebar
-          fetch("http://localhost:8000/sessions").then(r => r.json()).then(d => setSessions(d.sessions || []))
+          fetch("http://localhost:8000/v2/conversations").then(r => r.json()).then(d => setSessions(d.conversations || d.sessions || []))
         }
       } catch (e) { console.error("Failed to create session", e) }
     }
