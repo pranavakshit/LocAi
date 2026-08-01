@@ -271,6 +271,31 @@ def get_session(sess_id: str):
     if sess: return sess
     return {"error": "Session not found"}
 
+# ==========================================
+# v2 Conversation API
+# ==========================================
+
+@app.get("/v2/conversations")
+def v2_list_conversations():
+    return {"conversations": [c.model_dump() for c in v2_service.search_conversation("")]}
+
+@app.get("/v2/conversations/{conv_id}")
+def v2_get_conversation(conv_id: str):
+    conv = v2_service.load_conversation(conv_id)
+    if conv:
+        return conv.model_dump()
+    return {"error": "Conversation not found"}
+
+@app.post("/v2/conversations")
+def v2_create_conversation(title: str = "New Conversation", project_id: str | None = None):
+    conv = v2_service.create_conversation(title, project_id)
+    return conv.model_dump()
+
+@app.delete("/v2/conversations/{conv_id}")
+def v2_delete_conversation(conv_id: str):
+    v2_service.delete_conversation(conv_id)
+    return {"status": "ok"}
+
 @app.get("/update/check")
 def check_update():
     import requests
