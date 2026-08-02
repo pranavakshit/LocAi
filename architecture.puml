@@ -1,89 +1,151 @@
-@startuml
-' ==========================================================
-' LocAi Architecture v2.1.0 – Capability-Driven Agent Platform
-' ==========================================================
+@startuml LocAi_Architecture
+skinparam backgroundColor #F0F0F0
+skinparam componentStyle rectangle
+skinparam linetype ortho
 
-package "LocAi Core (Python Backend)" {
-  [FastAPI Server\n(server.py)]    as server     <<Component>>
-  [Event Bus\n(events.py)]         as eventbus   <<Component>>
-  [Chat Router\n(routers.py)]      as router     <<Component>>
-  [Context Engine\n(context.py)]   as context    <<Component>>
-  [Inference Provider\n(providers.py)] as provider <<Component>>
-  [Settings Manager\n(settings.py)] as settings  <<Component>>
-  [Conversation Service\n(services/)]  as convservice <<Service>>
-  [Agent Tools\n(tools.py)]        as tools      <<Component>>
-}
+' ==========================================================
+' Client Layer (React SPA + PyWebView Native Container)
+' ==========================================================
+package "Client Layer (Frontend UI)" {
+  [Native UI Wrapper (modern_app.py)] as gui <<pywebview>>
+  
+  package "React SPA (ui/src/)" {
+    [App Component (App.tsx)] as app <<Root>>
+    
+    package "Views & Components" {
+      [ChatView] as chatview <<Component>>
+      [PlaygroundView] as playground <<Component>>
+      [ModelsView] as modelsview <<Component>>
+      [RightPanel (Settings)] as rightpanel <<Component>>
+      [Artifact Canvas] as canvas <<Component>>
+      [MessageBubble] as msgbubble <<Component>>
+    }
 
-package "Client Layer" {
-  [Native UI Wrapper\n(modern_app.py)] as gui <<pywebview>>
-  package "React SPA (ui/)" {
-    [UI Core\n(App.tsx)] as react <<Frontend>>
-    [Artifact Canvas\nPlayground] as canvas <<Component>>
-    [Models Manager] as models <<Component>>
+    package "State & Hooks" {
+      [UseTheme] as usetheme <<Hook>>
+      [AbortController (Streaming)] as abortctrl <<State>>
+    }
+
+    app --> chatview
+    app --> playground
+    app --> modelsview
+    app --> rightpanel
+    app --> canvas
+    chatview --> msgbubble
   }
-  [CLI] as cli <<Component>>
-}
-
-package "Runtime & Bootstrapping" {
-  [LocAi.exe\n(launcher.py)] as launcher <<Dual-Mode Entrypoint>>
-  [System Tray\n(pystray)] as tray <<Component>>
 }
 
 ' ==========================================================
-' Internal Data Stores
+' Backend Layer (FastAPI Core)
 ' ==========================================================
-database "User Data\n(%USERPROFILE%\\LocAi\\userdata\\)" {
-  node "projects.json" as projects
-  node "config.json" as config
-  database "locai_v2.db\n(SQLite + FTS5)" as db_v2
-  node "local_rag_db\n(ChromaDB)" as db
+package "LocAi Core (Python Backend)" {
+  [FastAPI App (server.py)] as fastapi <<Server>>
+  
+  package "Event-Driven System" {
+    [Event Bus (events.py)] as eventbus <<Pub/Sub>>
+    note bottom of eventbus
+      Topics:
+      - EVENT_CHAT_STARTED
+      - EVENT_TOKEN_GENERATED
+      - EVENT_STATUS_UPDATE
+      - EVENT_USAGE_UPDATE
+      - EVENT_CHAT_FINISHED
+    end note
+  }
+
+  package "Routers & Business Logic" {
+    [Chat Router (routers.py)] as chatrouter <<Controller>>
+    [ReAct Agent Loop] as reactloop <<Engine>>
+    chatrouter --> reactloop : Executes Autonomous Tasks
+  }
+
+  package "Services (services/)" {
+    [Conversation Service] as conv_svc <<Service>>
+    [Attachment Service] as attach_svc <<Service>>
+    [Context Engine (context.py)] as context_engine <<Service>>
+    [Inference Provider (providers.py)] as inference <<Service>>
+  }
+
+  package "Data & Storage Access" {
+    [Settings Manager (settings.py)] as settings_mgr <<DAO>>
+    [Vector Store (db/vector.py)] as vector_store <<DAO>>
+    [Legacy Migrator (db/migrator.py)] as migrator <<Utility>>
+  }
+  
+  package "Tools (tools.py)" {
+    [DuckDuckGo Search] as tool_ddgs <<Tool>>
+    [Python Evaluator] as tool_pyeval <<Tool>>
+    [Web Scraper] as tool_scrape <<Tool>>
+  }
 }
 
 ' ==========================================================
-' External Services
+' Database & File System
 ' ==========================================================
-cloud "Ollama API\nhttp://localhost:11434" as ollama <<Service>>
+package "Storage Layer (%USERPROFILE%\\LocAi\\)" {
+  database "locai_v2.db (SQLite WAL + FTS5)" as sqlite {
+    [Conversations Table]
+    [Messages Table]
+    [Artifacts Table]
+    [Attachments Table]
+  }
+  
+  database "local_rag_db (ChromaDB)" as chromadb {
+    [Embeddings & Metadata]
+  }
 
-' ==========================================================
-' Relationships – Execution Flow
-' ==========================================================
-launcher --> tray : Spawns Background Daemon
-launcher --> gui : Starts Native Window (if UI mode)
+  folder "Configuration" {
+    [config.json]
+    [projects.json]
+  }
 
-gui --> react : Renders web assets
-react --> server : HTTP/WebSocket (Port 8000)
-cli --> server : HTTP Commands
-
-server --> settings : Manage Settings & Projects
-server --> convservice : Manage V2 Conversations
-convservice --> db_v2 : Read/Write SQLite
-
-server --> eventbus : Emits API Events
-eventbus <--> router : Subscribes to ChatRequests
-
-router --> context : Gathers context before inference
-context --> db : Queries project vector store
-router --> provider : Streams LLM tokens
-provider --> ollama : Sends generation request
-
-router --> tools : Executes Autonomous Agent Tools (ReAct)
-tools --> settings : Accesses workspace path
-
-settings --> projects : Reads/Writes
-settings --> config : Reads/Writes
+  folder "Workspace Data" {
+    [artifacts/ (Markdown files)]
+    [attachments/ (Hashed blobs)]
+  }
+}
 
 ' ==========================================================
-' Additional Notes
+' External Dependencies
 ' ==========================================================
-note right of router
-  • Central Intelligence Hub
-  • Capability-Driven (Injects System Prompts)
-  • Implements ReAct Tool Calling Loop
-end note
+package "External Services" {
+  cloud "Ollama API (localhost:11434)" as ollama <<Local LLM>>
+  cloud "DuckDuckGo (Internet)" as ddgs_api <<Search>>
+  cloud "GitHub API" as github_api <<Releases>>
+}
 
-note right of eventbus
-  • Pub/Sub Architecture
-  • Allows plugins/routers to observe tokens
-end note
+' ==========================================================
+' Flow & Relationships
+' ==========================================================
+gui --> app : Mounts React App
+
+app --> fastapi : HTTP POST /chat (Streaming)
+app --> fastapi : HTTP POST /model/pull
+app --> fastapi : HTTP GET /v2/conversations
+
+fastapi --> eventbus : Registers Callbacks for Streaming
+fastapi --> chatrouter : Routes /chat requests
+fastapi --> conv_svc : Proxies Conversation CRUD
+fastapi --> attach_svc : Routes File Uploads
+
+chatrouter <--> eventbus : Publishes Stream Events
+chatrouter --> context_engine : Retrieves RAG context
+context_engine --> vector_store : Queries ChromaDB
+vector_store --> chromadb : Reads Embeddings
+
+reactloop --> tool_ddgs : Calls Search
+tool_ddgs --> ddgs_api : Live Web Query
+reactloop --> tool_pyeval : Executes Code Sandbox
+reactloop --> inference : Requests LLM Output
+
+inference --> ollama : HTTP Generation / Pull
+attach_svc --> sqlite : Records File Metadata
+conv_svc --> sqlite : Reads/Writes Chat History
+migrator --> sqlite : Migrates Legacy v1 JSON
+
+fastapi --> [artifacts/ (Markdown files)] : Extracts ``` markdown blocks
+attach_svc --> [attachments/ (Hashed blobs)] : Saves physical files
+settings_mgr --> [config.json] : Reads Theme/Model
+settings_mgr --> [projects.json] : Reads Workspaces
 
 @enduml
