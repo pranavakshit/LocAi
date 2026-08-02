@@ -14,6 +14,8 @@ Started as a simple idea: run a local model and talk to it. Now evolving into a 
 *   **Local Models Manager**: Dedicated hub to manage and download models locally (e.g., HuggingFace, Ollama integrations).
 *   **Event-Driven Architecture**: Scalable, capability-driven backend featuring a lightweight internal Pub/Sub Event Bus.
 *   **Multi-Session Chat History**: Conversations are safely persisted to disk using a **robust SQLite database (WAL mode)** and are fully indexed with **FTS5** semantic search.
+*   **Web Search Capability**: Automatically searches the live internet (via DDGS) when needed, pulling in real-time context directly into the conversation.
+*   **Live Stream Controls**: True streaming functionality with real-time UI feedback ("Thinking...", "Connecting...") and a graceful 'Stop Generation' feature.
 *   **Native File Attachments**: Seamlessly inject local documents into your prompt context. Files are safely hashed and copied to an isolated `brain` folder for reliable retrieval.
 *   **Decoupled Headless Runtime**: Dual-mode `LocAi.exe` handles both the UI and background daemon, providing a System Tray icon for persistence.
 *   **Auto Updates**: Checks GitHub releases for updates and notifies the user directly in the UI.

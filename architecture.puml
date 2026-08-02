@@ -1,6 +1,6 @@
 @startuml
 ' ==========================================================
-' LocAi Architecture vNext – Capability-Driven Agent Platform
+' LocAi Architecture v2.1.0 – Capability-Driven Agent Platform
 ' ==========================================================
 
 package "LocAi Core (Python Backend)" {
