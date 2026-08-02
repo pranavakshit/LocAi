@@ -1279,6 +1279,12 @@ function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, s
       <Section title="Parameters">
         <RangeParam label="Temperature" value={temperature} min={0} max={2} step={0.01} onChange={setTemperature} format={v => v.toFixed(2)} />
         <RangeParam label="Max tokens" value={maxTokens} min={256} max={8192} step={256} onChange={setMaxTokens} format={v => v.toLocaleString()} />
+        
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--text-3)', cursor: 'pointer', marginTop: 12 }}>
+          <input type="checkbox" checked={webSearch} onChange={e => setWebSearch(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--accent)' }} />
+          Web Search
+        </label>
+
         <div style={{ marginTop: 12 }}>
           <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>System Prompt</div>
           <textarea 
@@ -1390,6 +1396,7 @@ export default function App() {
   const [temperature, setTemperature] = useState(0.7)
   const [maxTokens, setMaxTokens] = useState(4096)
   const [systemPrompt, setSystemPrompt] = useState("")
+  const [webSearch, setWebSearch] = useState(false)
   const [canvasOpen, setCanvasOpen] = useState(false)
   const [canvasContent, setCanvasContent] = useState('')
   const [legalConsent, setLegalConsent] = useState(() => localStorage.getItem('locai_legal_consent'))
