@@ -12,6 +12,6 @@ Welcome to LocAi **v2.1.0**! This release introduces powerful new real-time capa
 ### 🛠️ Architecture & Build Hardening
 - **Comprehensive Blueprint:** Massively expanded the `architecture.puml` blueprint to meticulously map out every granular component, pub/sub event, SQLite/ChromaDB table structure, and external service dependency.
 - **Model Download Fixes:** Resolved an issue where the model download payload caused silent 422 API errors.
-- **Bulletproof CI:** Hardened the GitHub Actions Vite build step to auto-generate missing Figma configurations, guaranteeing CI stability even if `.figma` gets excluded.
+- **Bulletproof CI:** Conducted a deep dive into the CI pipeline to uncover and resolve a hidden PyInstaller failure by natively tracking `LocAi.spec` and correcting `.gitignore` exclusions.
 
 *Stay curious. The agentic future is local.*
