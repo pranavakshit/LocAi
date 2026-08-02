@@ -111,6 +111,13 @@ const Ic = {
       <path d="M11 8L6.5 12.5a3.182 3.182 0 01-4.5-4.5l6-6a2 2 0 012.8 2.8L5.3 10.3a.9.9 0 01-1.3-1.3L9.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
+  Globe: () => (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <circle cx="7.5" cy="7.5" r="6.5" stroke="currentColor" strokeWidth="1.2"/>
+      <ellipse cx="7.5" cy="7.5" rx="2.5" ry="6.5" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M1 7.5h13" stroke="currentColor" strokeWidth="1.2"/>
+    </svg>
+  ),
   Panel: () => (
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
       <rect x="1.5" y="2" width="12" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
@@ -546,7 +553,7 @@ function StatusPill({ label, color }: { label: string; color: string }) {
 
 // ─── Chat View ─────────────────────────────────────────────────────────────────
 
-function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef, selectedModel }: {
+function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef, selectedModel, webSearch, setWebSearch }: {
   messages: Message[]
   input: string
   setInput: (v: string) => void
@@ -554,6 +561,8 @@ function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef
   onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void
   messagesEndRef: React.RefObject<HTMLDivElement>
   selectedModel: string
+  webSearch: boolean
+  setWebSearch: (v: boolean) => void
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)' }}>
@@ -599,6 +608,13 @@ function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef
               }
             }} style={{ ...iconBtnStyle() }}>
               <Ic.Attach />
+            </button>
+            <button 
+              onClick={() => setWebSearch(!webSearch)}
+              style={{ ...iconBtnStyle(), background: webSearch ? 'var(--accent-dim)' : 'transparent', color: webSearch ? 'var(--accent)' : 'var(--text-3)' }}
+              title={webSearch ? "Web Search: ON" : "Web Search: OFF"}
+            >
+              <Ic.Globe />
             </button>
             <div style={{ flex: 1 }} />
             <span style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
@@ -1179,12 +1195,11 @@ function SettingsView() {
 
 // ─── Right Panel ───────────────────────────────────────────────────────────────
 
-function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, setMaxTokens, systemPrompt, setSystemPrompt, webSearch, setWebSearch, totalTokens, messageCount, localModels, recommendedModels, activeContext }: {
+function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, setMaxTokens, systemPrompt, setSystemPrompt, totalTokens, messageCount, localModels, recommendedModels, activeContext }: {
   model: string; setModel: (m: string) => void
   temperature: number; setTemperature: (v: number) => void
   maxTokens: number; setMaxTokens: (v: number) => void
   systemPrompt: string; setSystemPrompt: (v: string) => void
-  webSearch: boolean; setWebSearch: (v: boolean) => void
   totalTokens: number
   messageCount: number
   localModels: string[]
@@ -1280,11 +1295,6 @@ function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, s
         <RangeParam label="Temperature" value={temperature} min={0} max={2} step={0.01} onChange={setTemperature} format={v => v.toFixed(2)} />
         <RangeParam label="Max tokens" value={maxTokens} min={256} max={8192} step={256} onChange={setMaxTokens} format={v => v.toLocaleString()} />
         
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--text-3)', cursor: 'pointer', marginTop: 12 }}>
-          <input type="checkbox" checked={webSearch} onChange={e => setWebSearch(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--accent)' }} />
-          Web Search
-        </label>
-
         <div style={{ marginTop: 12 }}>
           <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>System Prompt</div>
           <textarea 
@@ -1694,6 +1704,7 @@ export default function App() {
               onSend={sendMessage} onKeyDown={handleKeyDown}
               messagesEndRef={messagesEndRef as React.RefObject<HTMLDivElement>}
               selectedModel={selectedModel}
+              webSearch={webSearch} setWebSearch={setWebSearch}
             />
           )}
           {activeTab === 'playground' && <PlaygroundView />}
@@ -1750,7 +1761,6 @@ export default function App() {
           temperature={temperature} setTemperature={setTemperature}
           maxTokens={maxTokens} setMaxTokens={setMaxTokens}
           systemPrompt={systemPrompt} setSystemPrompt={setSystemPrompt}
-          webSearch={webSearch} setWebSearch={setWebSearch}
           totalTokens={totalTokens}
           messageCount={messages.length}
           localModels={localModels}

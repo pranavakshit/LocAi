@@ -39,12 +39,14 @@ class ChatRouter:
         try:
             # 1. Instant feedback for Context Gathering
             from core.events import EVENT_STATUS_UPDATE
-            event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": "Gathering context..."})
+            event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": "Analyzing request..."})
             
             # 2. Gather Context
             user_query = messages[-1]["content"] if messages and messages[-1]["role"] == "user" else ""
             if user_query:
-                context_results = self.context_engine.gather_context(user_query, web_search=payload.get("web_search", False))
+                is_web = payload.get("web_search", False)
+                event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": "Searching the web..." if is_web else "Gathering local context..."})
+                context_results = self.context_engine.gather_context(user_query, web_search=is_web)
                 if context_results:
                     context = "\n\n".join(context_results)
                     system_msg = f"You are LocAi. You have been provided with real-time system and internet context below. You MUST use this context to answer the user's question. Do NOT apologize or claim you cannot browse the internet, because the context below proves that you can.\n\n--- LOCAL CONTEXT ---\n{context}\n--------------------"
@@ -58,15 +60,20 @@ class ChatRouter:
 
             # 4. Generate Tokens (ReAct Loop)
             max_iterations = 5
-            event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": ""}) # Clear status before generation
+            event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": "Thinking..."}) 
             
             for i in range(max_iterations):
                 full_response = ""
+                first_token_received = False
                 for token in self.inference_provider.chat_stream(model, messages, options=options):
                     if isinstance(token, dict) and token.get("__type__") == "usage":
                         from core.events import EVENT_USAGE_UPDATE
                         event_bus.emit_sync(EVENT_USAGE_UPDATE, {"request_id": request_id, "tokens": token.get("tokens")})
                         continue
+                        
+                    if not first_token_received:
+                        first_token_received = True
+                        event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": ""})
                         
                     full_response += token
                     event_bus.emit_sync(EVENT_TOKEN_GENERATED, {"request_id": request_id, "token": token})
