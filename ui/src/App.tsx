@@ -951,7 +951,7 @@ function ModelsView({ localModels, recommendedModels }: { localModels: string[],
       await fetch("http://localhost:8000/model/pull", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: modelName })
+        body: JSON.stringify({ model: modelName })
       })
       clearInterval(interval)
       setProgress(100)
@@ -1239,7 +1239,7 @@ function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, s
       await fetch("http://localhost:8000/model/pull", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: modelName })
+        body: JSON.stringify({ model: modelName })
       })
       alert(`Successfully downloaded ${modelName}`)
     } catch (e) {
