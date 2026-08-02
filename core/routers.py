@@ -71,7 +71,7 @@ class ChatRouter:
                         event_bus.emit_sync(EVENT_USAGE_UPDATE, {"request_id": request_id, "tokens": token.get("tokens")})
                         continue
                         
-                    if not first_token_received:
+                    if not first_token_received and token.strip():
                         first_token_received = True
                         event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": ""})
                         
