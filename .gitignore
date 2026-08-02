@@ -39,3 +39,14 @@ LOCAI_PROJECT_AUDIT.md
 # User Data
 userdata/
 audit_report.md
+
+# Extraneous local files
+config.json
+fix.py
+fix_ts.py
+test_search.py
+ui/AGENTS.md
+ui/CLAUDE.md
+ui/*.png
+ui/pnpm-lock.yaml
+ui/.figma/
