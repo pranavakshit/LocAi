@@ -23,7 +23,6 @@ Thumbs.db
 # Build
 build/
 dist/
-*.spec
 ui/node_modules/
 ui/dist/
 
