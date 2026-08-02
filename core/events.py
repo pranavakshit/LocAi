@@ -6,6 +6,7 @@ import threading
 EVENT_CHAT_STARTED = "CHAT_STARTED"
 EVENT_TOKEN_GENERATED = "TOKEN_GENERATED"
 EVENT_STATUS_UPDATE = "STATUS_UPDATE"
+EVENT_USAGE_UPDATE = "USAGE_UPDATE"
 EVENT_CHAT_FINISHED = "CHAT_FINISHED"
 
 class EventBus:
@@ -42,6 +43,16 @@ class EventBus:
         
         for callback in self._subscribers.get(event_type, []):
             threading.Thread(target=self._run_callback, args=(callback, payload), daemon=True).start()
+
+    def emit_sync(self, event_type: str, payload: dict = None):
+        """
+        Emit an event to all subscribers synchronously in the current thread.
+        """
+        if payload is None:
+            payload = {}
+            
+        for callback in self._subscribers.get(event_type, []):
+            self._run_callback(callback, payload)
 
     def _run_callback(self, callback, payload):
         try:

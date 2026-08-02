@@ -1590,6 +1590,10 @@ export default function App() {
                   setMessages(prev => prev.map(msg => 
                     msg.id === assistantId ? { ...msg, status: data.content || undefined } : msg
                   ));
+                } else if (data.type === 'usage') {
+                  setMessages(prev => prev.map(msg => 
+                    msg.id === assistantId ? { ...msg, tokens: data.content } : msg
+                  ));
                 }
               } catch(e) {
                 console.error("Parse error on line:", line, e);

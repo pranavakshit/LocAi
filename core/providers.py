@@ -9,7 +9,7 @@ class InferenceProvider(abc.ABC):
     """
 
     @abc.abstractmethod
-    def chat_stream(self, model: str, messages: List[Dict[str, str]]) -> Generator[str, None, None]:
+    def chat_stream(self, model: str, messages: List[Dict[str, str]], options: dict = None) -> Generator:
         pass
 
     @abc.abstractmethod
@@ -29,15 +29,19 @@ class OllamaProvider(InferenceProvider):
     def __init__(self, base_url: str = "http://localhost:11434"):
         self.base_url = base_url
 
-    def chat_stream(self, model: str, messages: List[Dict[str, str]]) -> Generator[str, None, None]:
+    def chat_stream(self, model: str, messages: List[Dict[str, str]], options: dict = None) -> Generator:
         try:
+            req_json = {
+                "model": model,
+                "messages": messages,
+                "stream": True
+            }
+            if options:
+                req_json["options"] = options
+                
             res = requests.post(
                 f"{self.base_url}/api/chat",
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "stream": True
-                },
+                json=req_json,
                 stream=True
             )
 
@@ -51,6 +55,12 @@ class OllamaProvider(InferenceProvider):
                         yield f"\n[Ollama API Error] {j['error']}\n"
                     elif "message" in j and "content" in j["message"]:
                         yield j["message"]["content"]
+                        
+                    if j.get("done"):
+                        prompt_eval = j.get("prompt_eval_count", 0)
+                        eval_count = j.get("eval_count", 0)
+                        if prompt_eval or eval_count:
+                            yield {"__type__": "usage", "tokens": prompt_eval + eval_count}
                 except Exception:
                     continue
 

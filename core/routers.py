@@ -27,11 +27,19 @@ class ChatRouter:
         request_id = payload.get("request_id")
         messages = payload.get("messages", [])
         model = payload.get("model", "gemma4:e2b")
+        
+        temperature = payload.get("temperature")
+        max_tokens = payload.get("max_tokens")
+        options = {}
+        if temperature is not None:
+            options["temperature"] = temperature
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
 
         try:
             # 1. Instant feedback for Context Gathering
             from core.events import EVENT_STATUS_UPDATE
-            event_bus.emit(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": "Gathering context..."})
+            event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": "Gathering context..."})
             
             # 2. Gather Context
             user_query = messages[-1]["content"] if messages and messages[-1]["role"] == "user" else ""
@@ -50,13 +58,18 @@ class ChatRouter:
 
             # 4. Generate Tokens (ReAct Loop)
             max_iterations = 5
-            event_bus.emit(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": ""}) # Clear status before generation
+            event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": ""}) # Clear status before generation
             
             for i in range(max_iterations):
                 full_response = ""
-                for token in self.inference_provider.chat_stream(model, messages):
+                for token in self.inference_provider.chat_stream(model, messages, options=options):
+                    if isinstance(token, dict) and token.get("__type__") == "usage":
+                        from core.events import EVENT_USAGE_UPDATE
+                        event_bus.emit_sync(EVENT_USAGE_UPDATE, {"request_id": request_id, "tokens": token.get("tokens")})
+                        continue
+                        
                     full_response += token
-                    event_bus.emit(EVENT_TOKEN_GENERATED, {"request_id": request_id, "token": token})
+                    event_bus.emit_sync(EVENT_TOKEN_GENERATED, {"request_id": request_id, "token": token})
                     
                 messages.append({"role": "assistant", "content": full_response})
                 
@@ -67,21 +80,21 @@ class ChatRouter:
                 tool_name, args = parse_tool_call(full_response)
                 
                 if tool_name:
-                    event_bus.emit(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": f"Executing {tool_name}..."})
+                    event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": f"Executing {tool_name}..."})
                     result = execute_tool(tool_name, args)
                     tool_response = f"<response:{tool_name}>\n{result}\n</response:{tool_name}>"
                     messages.append({"role": "user", "content": tool_response})
-                    event_bus.emit(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": "Thinking..."})
+                    event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": "Thinking..."})
                 else:
-                    event_bus.emit(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": ""})
+                    event_bus.emit_sync(EVENT_STATUS_UPDATE, {"request_id": request_id, "status": ""})
                     break
                 
         except Exception as e:
             import logging
             logging.error(f"ChatRouter Error: {e}")
-            event_bus.emit(EVENT_TOKEN_GENERATED, {"request_id": request_id, "token": f"\n[Router Error] {e}\n"})
+            event_bus.emit_sync(EVENT_TOKEN_GENERATED, {"request_id": request_id, "token": f"\n[Router Error] {e}\n"})
         finally:
-            event_bus.emit(EVENT_CHAT_FINISHED, {"request_id": request_id})
+            event_bus.emit_sync(EVENT_CHAT_FINISHED, {"request_id": request_id})
 
 # Initialize the singleton router so it binds to the bus
 chat_router = ChatRouter()

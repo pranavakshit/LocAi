@@ -19,7 +19,7 @@ Thumbs.db
 *.log
 
 # Config
-# config.json
+.agents/
 # Build
 build/
 dist/

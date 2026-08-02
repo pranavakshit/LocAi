@@ -95,7 +95,7 @@ def chat_endpoint(req: ChatRequest):
     request_id = str(uuid.uuid4())
     token_queue = queue.Queue()
     
-    from core.events import EVENT_STATUS_UPDATE
+    from core.events import EVENT_STATUS_UPDATE, EVENT_USAGE_UPDATE
     
     # Callbacks to bridge the Event Bus back to this specific HTTP request
     def on_token(payload):
@@ -106,6 +106,10 @@ def chat_endpoint(req: ChatRequest):
         if payload.get("request_id") == request_id:
             token_queue.put({"type": "status", "content": payload.get("status", "")})
             
+    def on_usage(payload):
+        if payload.get("request_id") == request_id:
+            token_queue.put({"type": "usage", "content": payload.get("tokens", 0)})
+            
     def on_finish(payload):
         if payload.get("request_id") == request_id:
             token_queue.put(None) # Sentinel to stop generator
@@ -113,6 +117,7 @@ def chat_endpoint(req: ChatRequest):
     # Subscribe to events
     event_bus.subscribe(EVENT_TOKEN_GENERATED, on_token)
     event_bus.subscribe(EVENT_STATUS_UPDATE, on_status)
+    event_bus.subscribe(EVENT_USAGE_UPDATE, on_usage)
     event_bus.subscribe(EVENT_CHAT_FINISHED, on_finish)
     
     # Save the user's message if session_id is provided
@@ -152,6 +157,7 @@ def chat_endpoint(req: ChatRequest):
     def generator():
         import json
         full_response = ""
+        total_tokens = 0
         try:
             while True:
                 item = token_queue.get()
@@ -159,6 +165,8 @@ def chat_endpoint(req: ChatRequest):
                     break
                 if item["type"] == "token":
                     full_response += item["content"]
+                elif item["type"] == "usage":
+                    total_tokens = item["content"]
                 yield json.dumps(item) + "\n"
                 yield ""  # 🔥 forces flush
         finally:
@@ -169,7 +177,8 @@ def chat_endpoint(req: ChatRequest):
                 v2_ast_msg = V2Message(
                     conversation_id=req.session_id,
                     role="assistant",
-                    content=full_response
+                    content=full_response,
+                    tokens=total_tokens if total_tokens > 0 else None
                 )
                 v2_service.append_message(req.session_id, v2_ast_msg)
                 
@@ -204,6 +213,7 @@ def chat_endpoint(req: ChatRequest):
                 
             event_bus.unsubscribe(EVENT_TOKEN_GENERATED, on_token)
             event_bus.unsubscribe(EVENT_STATUS_UPDATE, on_status)
+            event_bus.unsubscribe(EVENT_USAGE_UPDATE, on_usage)
             event_bus.unsubscribe(EVENT_CHAT_FINISHED, on_finish)
 
     return StreamingResponse(generator(), media_type="application/x-ndjson")
