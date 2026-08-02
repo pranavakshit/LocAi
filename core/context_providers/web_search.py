@@ -5,10 +5,10 @@ class WebSearchProvider(ContextProvider):
     Silently fetches live internet results from DuckDuckGo if the user asks a question
     that requires up-to-date knowledge (detected via basic trigger keywords).
     """
-    def get_context(self, query: str) -> list[str]:
+    def get_context(self, query: str, web_search: bool = False) -> list[str]:
         # Simple heuristic to determine if we should search the web
         triggers = ["search", "web", "latest", "news", "who won", "what is the current", "weather"]
-        if not any(t in query.lower() for t in triggers):
+        if not web_search and not any(t in query.lower() for t in triggers):
             return []
             
         try:

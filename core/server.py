@@ -50,6 +50,7 @@ class ChatRequest(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     system_prompt: str | None = None
+    web_search: bool = False
 
 class ModelRequest(BaseModel):
     model: str
@@ -151,7 +152,8 @@ def chat_endpoint(req: ChatRequest):
         "session_id": req.session_id,
         "temperature": req.temperature,
         "max_tokens": req.max_tokens,
-        "system_prompt": req.system_prompt
+        "system_prompt": req.system_prompt,
+        "web_search": req.web_search
     })
 
     def generator():

@@ -1179,11 +1179,12 @@ function SettingsView() {
 
 // ─── Right Panel ───────────────────────────────────────────────────────────────
 
-function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, setMaxTokens, systemPrompt, setSystemPrompt, totalTokens, messageCount, localModels, recommendedModels, activeContext }: {
+function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, setMaxTokens, systemPrompt, setSystemPrompt, webSearch, setWebSearch, totalTokens, messageCount, localModels, recommendedModels, activeContext }: {
   model: string; setModel: (m: string) => void
   temperature: number; setTemperature: (v: number) => void
   maxTokens: number; setMaxTokens: (v: number) => void
   systemPrompt: string; setSystemPrompt: (v: string) => void
+  webSearch: boolean; setWebSearch: (v: boolean) => void
   totalTokens: number
   messageCount: number
   localModels: string[]
@@ -1561,7 +1562,9 @@ export default function App() {
           messages: backendMessages,
           session_id: currentSessionId,
           temperature,
-          max_tokens: maxTokens
+          max_tokens: maxTokens,
+          system_prompt: systemPrompt,
+          web_search: webSearch
         })
       });
 
@@ -1740,6 +1743,7 @@ export default function App() {
           temperature={temperature} setTemperature={setTemperature}
           maxTokens={maxTokens} setMaxTokens={setMaxTokens}
           systemPrompt={systemPrompt} setSystemPrompt={setSystemPrompt}
+          webSearch={webSearch} setWebSearch={setWebSearch}
           totalTokens={totalTokens}
           messageCount={messages.length}
           localModels={localModels}
@@ -1765,9 +1769,9 @@ export default function App() {
               Before you start, please review our legal terms. LocAi offers powerful offline AI capabilities along with optional online features (like model downloads and updates).
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px 0', borderTop: '1px solid var(--border-soft)', borderBottom: '1px solid var(--border-soft)' }}>
-              <a href="#" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>End User License Agreement</a>
-              <a href="#" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>Terms & Conditions</a>
-              <a href="#" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>Privacy Policy</a>
+              <a href="https://github.com/pranavakshit/LocAi/blob/main/docs/legal/EULA.md" target="_blank" rel="noreferrer" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>End User License Agreement</a>
+              <a href="https://github.com/pranavakshit/LocAi/blob/main/docs/legal/TERMS.md" target="_blank" rel="noreferrer" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>Terms & Conditions</a>
+              <a href="https://github.com/pranavakshit/LocAi/blob/main/docs/legal/PRIVACY.md" target="_blank" rel="noreferrer" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>Privacy Policy</a>
             </div>
             <p style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5, margin: 0 }}>
               By accepting, you agree to these terms. If you decline, all online capabilities will be disabled and LocAi will run in offline-only mode.

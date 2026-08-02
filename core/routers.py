@@ -44,7 +44,7 @@ class ChatRouter:
             # 2. Gather Context
             user_query = messages[-1]["content"] if messages and messages[-1]["role"] == "user" else ""
             if user_query:
-                context_results = self.context_engine.gather_context(user_query)
+                context_results = self.context_engine.gather_context(user_query, web_search=payload.get("web_search", False))
                 if context_results:
                     context = "\n\n".join(context_results)
                     system_msg = f"You are LocAi. You have been provided with real-time system and internet context below. You MUST use this context to answer the user's question. Do NOT apologize or claim you cannot browse the internet, because the context below proves that you can.\n\n--- LOCAL CONTEXT ---\n{context}\n--------------------"
