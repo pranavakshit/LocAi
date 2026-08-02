@@ -111,6 +111,12 @@ const Ic = {
       <path d="M11 8L6.5 12.5a3.182 3.182 0 01-4.5-4.5l6-6a2 2 0 012.8 2.8L5.3 10.3a.9.9 0 01-1.3-1.3L9.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
+  Stop: () => (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <rect x="4.5" y="4.5" width="6" height="6" fill="currentColor" rx="1"/>
+      <circle cx="7.5" cy="7.5" r="6.5" stroke="currentColor" strokeWidth="1.2"/>
+    </svg>
+  ),
   Globe: () => (
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
       <circle cx="7.5" cy="7.5" r="6.5" stroke="currentColor" strokeWidth="1.2"/>
@@ -553,7 +559,7 @@ function StatusPill({ label, color }: { label: string; color: string }) {
 
 // ─── Chat View ─────────────────────────────────────────────────────────────────
 
-function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef, selectedModel, webSearch, setWebSearch }: {
+function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef, selectedModel, webSearch, setWebSearch, isStreaming, onStop }: {
   messages: Message[]
   input: string
   setInput: (v: string) => void
@@ -563,13 +569,15 @@ function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef
   selectedModel: string
   webSearch: boolean
   setWebSearch: (v: boolean) => void
+  isStreaming: boolean
+  onStop: () => void
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)' }}>
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 0' }}>
-        {messages.map(msg => (
-          <MessageBubble key={msg.id} msg={msg} />
+      <div style={{ flex: 1, padding: '24px 16px', overflowY: 'auto' }}>
+        {messages.map((msg, i) => (
+          <MessageBubble key={msg.id} msg={msg} isStreaming={isStreaming} isLast={i === messages.length - 1} />
         ))}
         <div ref={messagesEndRef} />
       </div>
@@ -620,20 +628,35 @@ function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef
             <span style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
               {input.length > 0 ? `${input.length} chars` : `Model: ${selectedModel || 'None'}`}
             </span>
-            <button
-              onClick={onSend}
-              disabled={!input.trim()}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '6px 14px', borderRadius: 7, border: 'none',
-                background: input.trim() ? 'var(--accent)' : 'var(--surface-2)',
-                color: input.trim() ? '#fff' : 'var(--text-3)',
-                fontSize: 12.5, fontWeight: 500, cursor: input.trim() ? 'pointer' : 'not-allowed',
-                fontFamily: 'var(--font-sans)', transition: 'background 120ms',
-              }}
-            >
-              <Ic.Send /> Send
-            </button>
+            {isStreaming ? (
+              <button
+                onClick={onStop}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '6px 14px', borderRadius: 7, border: 'none',
+                  background: '#ef4444', color: '#fff',
+                  fontSize: 12.5, fontWeight: 500, cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)', transition: 'background 120ms',
+                }}
+              >
+                <Ic.Stop /> Stop
+              </button>
+            ) : (
+              <button
+                onClick={onSend}
+                disabled={!input.trim()}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '6px 14px', borderRadius: 7, border: 'none',
+                  background: input.trim() ? 'var(--accent)' : 'var(--surface-2)',
+                  color: input.trim() ? '#fff' : 'var(--text-3)',
+                  fontSize: 12.5, fontWeight: 500, cursor: input.trim() ? 'pointer' : 'not-allowed',
+                  fontFamily: 'var(--font-sans)', transition: 'background 120ms',
+                }}
+              >
+                <Ic.Send /> Send
+              </button>
+            )}
           </div>
         </div>
         <div style={{ textAlign: 'center', marginTop: 8, fontSize: 10.5, color: 'var(--text-3)' }}>
@@ -644,7 +667,7 @@ function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef
   )
 }
 
-function MessageBubble({ msg }: { msg: Message }) {
+function MessageBubble({ msg, isStreaming, isLast }: { msg: Message, isStreaming?: boolean, isLast?: boolean }) {
   const isUser = msg.role === 'user'
   return (
     <div style={{
@@ -698,7 +721,7 @@ function MessageBubble({ msg }: { msg: Message }) {
               </div>
             )}
           </div>
-          {!isUser && (
+          {!isUser && (!isStreaming || !isLast) && (
             <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
               <MsgAction label="Copy"><Ic.Copy /></MsgAction>
               <MsgAction label="Regenerate"><Ic.Refresh /></MsgAction>
@@ -1411,7 +1434,16 @@ export default function App() {
   const [canvasContent, setCanvasContent] = useState('')
   const [legalConsent, setLegalConsent] = useState(() => localStorage.getItem('locai_legal_consent'))
   const [selectedModel, setSelectedModel] = useState('')
+  const [isStreaming, setIsStreaming] = useState(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const stopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+  }
 
   const [localModels, setLocalModels] = useState<string[]>([])
   const [recommendedModels, setRecommendedModels] = useState<string[]>([])
@@ -1536,7 +1568,9 @@ export default function App() {
   }
 
   const sendMessage = async () => {
-    if (!input.trim()) return
+    if (!input.trim() || isStreaming) return
+    setIsStreaming(true)
+    abortControllerRef.current = new AbortController()
     const now = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
     const userContent = input.trim()
     const newMessage = { id: Date.now().toString(), role: 'user' as const, content: userContent, time: now }
@@ -1567,6 +1601,7 @@ export default function App() {
     setMessages(prev => [...prev, {
       id: assistantId, role: 'assistant',
       content: "",
+      status: "Connecting...",
       time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
     }]);
 
@@ -1575,6 +1610,7 @@ export default function App() {
       const response = await fetch("http://localhost:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortControllerRef.current?.signal,
         body: JSON.stringify({ 
           messages: backendMessages,
           session_id: currentSessionId,
@@ -1622,11 +1658,18 @@ export default function App() {
           }
         }
       }
-    } catch (error) {
-      console.error("Error communicating with LocAi:", error);
-      setMessages(prev => prev.map(msg => 
-        msg.id === assistantId ? { ...msg, content: msg.content + "\n\n**Error:** Could not connect to LocAi engine." } : msg
-      ));
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log("Fetch aborted");
+      } else {
+        console.error("Error communicating with LocAi:", error);
+        setMessages(prev => prev.map(msg => 
+          msg.id === assistantId ? { ...msg, content: msg.content + "\n\n**Error:** Could not connect to LocAi engine." } : msg
+        ));
+      }
+    } finally {
+      setIsStreaming(false)
+      abortControllerRef.current = null
     }
   }
 
@@ -1705,6 +1748,7 @@ export default function App() {
               messagesEndRef={messagesEndRef as React.RefObject<HTMLDivElement>}
               selectedModel={selectedModel}
               webSearch={webSearch} setWebSearch={setWebSearch}
+              isStreaming={isStreaming} onStop={stopGeneration}
             />
           )}
           {activeTab === 'playground' && <PlaygroundView />}
