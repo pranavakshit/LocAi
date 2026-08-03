@@ -152,10 +152,16 @@ class OllamaProvider(InferenceProvider):
                             if now - last_time >= 0.5 and last_io is not None:
                                 try:
                                     io = psutil.disk_io_counters()
-                                    payload["disk_read_speed"] = (io.read_bytes - last_io.read_bytes) / (now - last_time)
-                                    payload["disk_write_speed"] = (io.write_bytes - last_io.write_bytes) / (now - last_time)
-                                    last_io = io
-                                    last_time = now
+                                    if io is not None:
+                                        time_diff = now - last_time
+                                        if time_diff > 0:
+                                            rs = float((io.read_bytes - last_io.read_bytes) / time_diff)
+                                            ws = float((io.write_bytes - last_io.write_bytes) / time_diff)
+                                            import math
+                                            payload["disk_read_speed"] = rs if math.isfinite(rs) else 0.0
+                                            payload["disk_write_speed"] = ws if math.isfinite(ws) else 0.0
+                                        last_io = io
+                                        last_time = now
                                 except Exception:
                                     pass
 

@@ -99,3 +99,50 @@ input[type='range']::-webkit-slider-thumb {
   cursor: pointer;
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+  border-radius: 6px;
+}
+
+.btn-delete {
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-delete:hover {
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.4);
+  border-color: var(--red) !important;
+  color: var(--red) !important;
+}
+
+.btn-delete.shimmering {
+  background: linear-gradient(90deg, rgba(248,113,113,0.1) 25%, rgba(248,113,113,0.3) 50%, rgba(248,113,113,0.1) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+  pointer-events: none;
+  border-color: var(--red) !important;
+  color: var(--red) !important;
+}
+
+button {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button:not(:disabled):hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px);
+  filter: brightness(0.95);
+}

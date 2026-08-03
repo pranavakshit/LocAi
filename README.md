@@ -11,7 +11,7 @@ Started as a simple idea: run a local model and talk to it. Now evolving into a 
 *   **Next-Generation React Interface**: Gorgeous React SPA bundled with `pywebview` for native desktop performance. (Now features **Dynamic Theming** with Light/Dark modes).
 *   **Artifact Canvas & Playground**: Built-in code editor for debugging and a sliding Artifact Canvas that auto-extracts markdown code blocks as physical files.
 *   **Git Integration**: Issue git commands (commit, push) directly to the AI through the UI.
-*   **Local Models Manager**: Dedicated hub to manage and download models locally (e.g., HuggingFace, Ollama integrations).
+*   **Local Models Manager**: Dedicated hub to manage, search, download, and delete models locally (e.g., HuggingFace, Ollama integrations) featuring real-time UI/UX network and disk analytics.
 *   **Event-Driven Architecture**: Scalable, capability-driven backend featuring a lightweight internal Pub/Sub Event Bus.
 *   **Multi-Session Chat History**: Conversations are safely persisted to disk using a **robust SQLite database (WAL mode)** and are fully indexed with **FTS5** semantic search.
 *   **Web Search Capability**: Automatically searches the live internet (via DDGS) when needed, pulling in real-time context directly into the conversation.

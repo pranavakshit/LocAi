@@ -242,11 +242,23 @@ def download_model(req: ModelRequest):
             yield chunk
     return StreamingResponse(stream(), media_type="application/x-ndjson")
 
+@app.delete("/models/delete")
+def delete_model(req: ModelRequest):
+    try:
+        import requests
+        resp = requests.delete("http://localhost:11434/api/delete", json={"name": req.model})
+        if resp.status_code == 200:
+            return {"status": "success"}
+        return {"error": resp.text}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/models/search")
 def search_models(q: str):
     try:
         import re
-        html = requests.get(f"https://ollama.com/library?q={q}").text
+        import requests
+        html = requests.get(f"https://ollama.com/search?q={q}").text
         matches = re.findall(r'href="/library/([^/"]+)"', html)
         models = list(dict.fromkeys(matches))
         return {"models": models}
@@ -276,7 +288,7 @@ def get_recommended_models():
     import urllib.request
     import re
     try:
-        req = urllib.request.Request("https://ollama.com/library", headers={'User-Agent': 'Mozilla/5.0'})
+        req = urllib.request.Request("https://ollama.com/search", headers={'User-Agent': 'Mozilla/5.0'})
         html = urllib.request.urlopen(req).read().decode('utf-8')
         models = re.findall(r'href="/library/([^/"]+)"', html)
         seen = set()

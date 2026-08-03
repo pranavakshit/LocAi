@@ -118,6 +118,7 @@ gui --> app : Mounts React App
 
 app --> fastapi : HTTP POST /chat (Streaming)
 app --> fastapi : HTTP POST /model/pull
+app --> fastapi : HTTP DELETE /models/delete
 app --> fastapi : HTTP GET /v2/conversations
 
 fastapi --> eventbus : Registers Callbacks for Streaming

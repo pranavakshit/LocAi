@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type KeyboardEvent, type ReactNode } from 'react'
+import { Area, AreaChart, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 declare global {
   interface Window {
@@ -12,7 +13,7 @@ type NavSection = 'new-chat' | 'history' | 'models' | 'files' | 'analytics' | 'c
 
 type DownloadState = {
   name: string
-  status: 'idle' | 'downloading' | 'paused'
+  status: 'idle' | 'downloading' | 'paused' | 'complete'
   progress: number
   completed: number
   total: number
@@ -20,6 +21,8 @@ type DownloadState = {
   eta: number
   diskReadSpeed: number
   diskWriteSpeed: number
+  history: { time: string, speed: number, diskRead: number, diskWrite: number }[]
+  completeTimestamp: number | null
 }
 
 export function formatBytes(bytes: number, decimals = 2) {
@@ -578,6 +581,10 @@ function StatusPill({ label, color }: { label: string; color: string }) {
   )
 }
 
+function Skeleton({ width = '100%', height = '100%', borderRadius = 6, style = {} }: { width?: number | string, height?: number | string, borderRadius?: number | string, style?: React.CSSProperties }) {
+  return <div className="skeleton" style={{ width, height, borderRadius, ...style }} />
+}
+
 // ─── Chat View ─────────────────────────────────────────────────────────────────
 
 function ChatView({ messages, input, setInput, onSend, onKeyDown, messagesEndRef, selectedModel, webSearch, setWebSearch, isStreaming, onStop }: {
@@ -724,6 +731,13 @@ function MessageBubble({ msg, isStreaming, isLast }: { msg: Message, isStreaming
             borderRadius: isUser ? 10 : 0, padding: isUser ? '10px 14px' : 0,
           }}>
             {formatContent(msg.content)}
+            {isLast && isStreaming && !msg.content && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4, width: '100%', maxWidth: 400 }}>
+                <Skeleton height={14} width="85%" />
+                <Skeleton height={14} width="95%" />
+                <Skeleton height={14} width="60%" />
+              </div>
+            )}
             {msg.artifacts && msg.artifacts.length > 0 && (
               <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {msg.artifacts.map(art => (
@@ -735,9 +749,8 @@ function MessageBubble({ msg, isStreaming, isLast }: { msg: Message, isStreaming
               </div>
             )}
             {msg.status && (
-              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent)', fontSize: 12, fontWeight: 500, opacity: 0.8, animation: 'pulse 1.5s infinite' }}>
-                <style>{`@keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }`}</style>
-                <Ic.Sparkle />
+              <div style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-2)', fontSize: 11, fontWeight: 500, padding: '4px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16 }}>
+                <div style={{ width: 6, height: 6, borderRadius: 3, background: 'var(--accent)' }} className="skeleton" />
                 {msg.status}
               </div>
             )}
@@ -958,19 +971,38 @@ function ModelsView({
   downloadState, 
   downloadModel, 
   pauseDownload, 
-  cancelDownload 
+  cancelDownload,
+  deleteModel 
 }: { 
   localModels: string[], 
   recommendedModels: string[],
   downloadState: DownloadState,
   downloadModel: (m: string) => void,
   pauseDownload: () => void,
-  cancelDownload: () => void
+  cancelDownload: () => void,
+  deleteModel: (m: string) => Promise<void>
 }) {
   const [downloadInput, setDownloadInput] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<string[]>([])
+  const [searchQuery, setSearchQuery] = useState(() => localStorage.getItem('locai_searchQuery') || '')
+  const [searchResults, setSearchResults] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('locai_searchResults')
+      return saved ? JSON.parse(saved) : []
+    } catch { return [] }
+  })
   const [isSearching, setIsSearching] = useState(false)
+  const [deletingModel, setDeletingModel] = useState<string | null>(null)
+
+  useEffect(() => {
+    localStorage.setItem('locai_searchQuery', searchQuery)
+    localStorage.setItem('locai_searchResults', JSON.stringify(searchResults))
+  }, [searchQuery, searchResults])
+
+  const handleDelete = async (model: string) => {
+    setDeletingModel(model)
+    await deleteModel(model)
+    setDeletingModel(null)
+  }
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -997,14 +1029,27 @@ function ModelsView({
           {/* Left Column: Downloaded Models */}
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', marginBottom: 16 }}>Downloaded Models</div>
-            {localModels.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>No models found.</div>}
+            {localModels.length === 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} height={52} />
+                ))}
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {localModels.map(model => (
                 <div key={model} style={{ padding: '16px', background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)', marginBottom: 4 }}>{model}</div>
                   </div>
-                  <button style={{ padding: '6px 12px', background: 'var(--surface-2)', border: 'none', borderRadius: 6, color: 'var(--red)', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>Delete</button>
+                  <button 
+                    onClick={() => handleDelete(model)} 
+                    disabled={deletingModel === model}
+                    className={`btn-delete ${deletingModel === model ? 'shimmering' : ''}`}
+                    style={{ padding: '6px 12px', background: 'var(--surface-2)', border: '1px solid transparent', borderRadius: 6, color: 'var(--text-3)', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}
+                  >
+                    {deletingModel === model ? 'Deleting...' : 'Delete'}
+                  </button>
                 </div>
               ))}
             </div>
@@ -1062,14 +1107,20 @@ function ModelsView({
               </form>
 
               <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 400 }}>
-                {searchResults.map(model => (
-                   <div key={model} style={{ padding: '12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                     <span style={{ fontSize: 13, color: 'var(--text-1)' }}>{model}</span>
-                     <button onClick={() => { setDownloadInput(model); downloadModel(model); }} disabled={downloadState.status !== 'idle'} style={{ padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--accent)', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>
-                       Download
-                     </button>
-                   </div>
-                ))}
+                {isSearching ? (
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} height={42} style={{ marginBottom: 4 }} />
+                  ))
+                ) : (
+                  searchResults.map(model => (
+                     <div key={model} style={{ padding: '12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                       <span style={{ fontSize: 13, color: 'var(--text-1)' }}>{model}</span>
+                       <button onClick={() => { setDownloadInput(model); downloadModel(model); }} disabled={downloadState.status !== 'idle'} style={{ padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--accent)', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>
+                         Download
+                       </button>
+                     </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -1087,22 +1138,56 @@ function ModelsView({
                 {downloadState.status === 'paused' && (
                   <button onClick={() => downloadModel(downloadState.name)} style={{ padding: '6px 12px', background: 'var(--accent)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>Resume</button>
                 )}
-                <button onClick={cancelDownload} style={{ padding: '6px 12px', background: 'var(--surface-2)', border: 'none', borderRadius: 6, color: 'var(--red)', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>Cancel</button>
+                {downloadState.status !== 'complete' && (
+                  <button onClick={cancelDownload} style={{ padding: '6px 12px', background: 'var(--surface-2)', border: 'none', borderRadius: 6, color: 'var(--red)', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>Cancel</button>
+                )}
+                {downloadState.status === 'complete' && (
+                  <div style={{ fontSize: 12, color: 'var(--green)', fontWeight: 500, padding: '6px 12px', background: 'var(--surface-2)', borderRadius: 6 }}>Download Complete</div>
+                )}
               </div>
             </div>
             
             <div style={{ height: 6, background: 'var(--surface-2)', borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: 'var(--accent)', width: `${downloadState.progress}%`, transition: 'width 0.2s linear' }} />
+              <div style={{ height: '100%', background: downloadState.status === 'complete' ? 'var(--green)' : 'var(--accent)', width: `${downloadState.progress}%`, transition: 'width 0.2s linear' }} />
             </div>
             
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-3)' }}>
               <span>{formatBytes(downloadState.completed)} / {formatBytes(downloadState.total)}</span>
               <span>
-                Net: {formatBytes(downloadState.speed)}/s • 
-                Disk R/W: {formatBytes(downloadState.diskReadSpeed)}/s / {formatBytes(downloadState.diskWriteSpeed)}/s • 
+                <span style={{ color: 'var(--accent)' }}>Download: {formatBytes(downloadState.speed)}/s</span> • 
+                <span style={{ color: 'var(--green)' }}>Disk Write: {formatBytes(downloadState.diskWriteSpeed)}/s</span> • 
                 ETA: {Math.ceil(downloadState.eta)}s
               </span>
             </div>
+
+            {downloadState.history && downloadState.history.length > 0 && (
+              <div style={{ height: 120, width: '100%', marginTop: 16 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={downloadState.history}>
+                    <defs>
+                      <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="var(--accent)" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorDisk" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--green)" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="var(--green)" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="time" hide />
+                    <YAxis hide domain={['auto', 'auto']} />
+                    <Tooltip 
+                      contentStyle={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+                      itemStyle={{ color: 'var(--text-1)' }}
+                      labelStyle={{ color: 'var(--text-3)', marginBottom: 4 }}
+                      formatter={(val: number) => formatBytes(val) + '/s'}
+                    />
+                    <Area type="monotone" dataKey="speed" name="Network" stroke="var(--accent)" fillOpacity={1} fill="url(#colorNet)" isAnimationActive={false} />
+                    <Area type="monotone" dataKey="diskWrite" name="Disk Write" stroke="var(--green)" fillOpacity={1} fill="url(#colorDisk)" isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1488,7 +1573,28 @@ export default function App() {
   const [sessions, setSessions] = useState<any[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
 
-  const [downloadState, setDownloadState] = useState<DownloadState>({ name: '', status: 'idle', progress: 0, completed: 0, total: 0, speed: 0, eta: 0, diskReadSpeed: 0, diskWriteSpeed: 0 })
+  const [downloadState, setDownloadState] = useState<DownloadState>(() => {
+    try {
+      const saved = localStorage.getItem('locai_downloadState')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.status === 'downloading') {
+          parsed.status = 'paused'
+          parsed.speed = 0
+          parsed.diskReadSpeed = 0
+          parsed.diskWriteSpeed = 0
+        }
+        return parsed
+      }
+    } catch (e) {
+      console.error(e)
+    }
+    return { name: '', status: 'idle', progress: 0, completed: 0, total: 0, speed: 0, eta: 0, diskReadSpeed: 0, diskWriteSpeed: 0, history: [], completeTimestamp: null }
+  })
+
+  useEffect(() => {
+    localStorage.setItem('locai_downloadState', JSON.stringify(downloadState))
+  }, [downloadState])
   const downloadAbortRef = useRef<AbortController | null>(null)
   const lastChunkTimeRef = useRef<number>(0)
   const lastChunkCompletedRef = useRef<number>(0)
@@ -1510,7 +1616,7 @@ export default function App() {
     setActiveTab('models')
     
     setDownloadState(prev => prev.name !== modelName ? {
-      name: modelName, status: 'downloading', progress: 0, completed: 0, total: 0, speed: 0, eta: 0
+      name: modelName, status: 'downloading', progress: 0, completed: 0, total: 0, speed: 0, eta: 0, diskReadSpeed: 0, diskWriteSpeed: 0, history: [], completeTimestamp: null
     } : { ...prev, status: 'downloading' })
 
     const abortController = new AbortController()
@@ -1556,16 +1662,27 @@ export default function App() {
                 const remaining = chunk.total - chunk.completed
                 const eta = speed > 0 ? remaining / speed : 0
                 
-                                setDownloadState(prev => ({
-                  ...prev,
-                  progress: (chunk.completed / chunk.total) * 100,
-                  completed: chunk.completed,
-                  total: chunk.total,
-                  speed: speed,
-                  eta: eta,
-                  diskReadSpeed: chunk.disk_read_speed !== undefined ? chunk.disk_read_speed : prev.diskReadSpeed,
-                  diskWriteSpeed: chunk.disk_write_speed !== undefined ? chunk.disk_write_speed : prev.diskWriteSpeed
-                }))
+                setDownloadState(prev => {
+                  const nowStr = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                  const newHistory = [...prev.history, { 
+                    time: nowStr, 
+                    speed: speed, 
+                    diskRead: chunk.disk_read_speed !== undefined ? chunk.disk_read_speed : prev.diskReadSpeed, 
+                    diskWrite: chunk.disk_write_speed !== undefined ? chunk.disk_write_speed : prev.diskWriteSpeed 
+                  }].slice(-30) // keep last 30 data points for the graph
+
+                  return {
+                    ...prev,
+                    progress: (chunk.completed / chunk.total) * 100,
+                    completed: chunk.completed,
+                    total: chunk.total,
+                    speed: speed,
+                    eta: eta,
+                    diskReadSpeed: chunk.disk_read_speed !== undefined ? chunk.disk_read_speed : prev.diskReadSpeed,
+                    diskWriteSpeed: chunk.disk_write_speed !== undefined ? chunk.disk_write_speed : prev.diskWriteSpeed,
+                    history: newHistory
+                  }
+                })
                 
                 lastChunkTimeRef.current = now
                 lastChunkCompletedRef.current = chunk.completed
@@ -1582,7 +1699,7 @@ export default function App() {
         }
       }
 
-      setDownloadState(prev => ({ ...prev, status: 'idle', progress: 100 }))
+      setDownloadState(prev => ({ ...prev, status: 'complete', progress: 100, completeTimestamp: Date.now() }))
       alert(`Successfully downloaded ${modelName}`)
       fetchLocalModels()
     } catch (e: any) {
@@ -1599,8 +1716,42 @@ export default function App() {
 
   const cancelDownload = () => {
     downloadAbortRef.current?.abort()
-    setDownloadState({ name: '', status: 'idle', progress: 0, completed: 0, total: 0, speed: 0, eta: 0, diskReadSpeed: 0, diskWriteSpeed: 0 })
+    setDownloadState({ name: '', status: 'idle', progress: 0, completed: 0, total: 0, speed: 0, eta: 0, diskReadSpeed: 0, diskWriteSpeed: 0, history: [], completeTimestamp: null })
   }
+
+  const deleteModel = async (modelName: string) => {
+    try {
+      const res = await fetch("http://localhost:8000/models/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: modelName })
+      })
+      const data = await res.json()
+      if (data.status === "success") {
+        fetchLocalModels()
+        if (selectedModel === modelName) setSelectedModel('')
+      } else {
+        alert(`Failed to delete model: ${data.error}`)
+      }
+    } catch (e) {
+      alert(`Error deleting model: ${e}`)
+    }
+  }
+
+  useEffect(() => {
+    let timer: any;
+    if (downloadState.status === 'complete' && downloadState.completeTimestamp) {
+      const remaining = 15000 - (Date.now() - downloadState.completeTimestamp)
+      if (remaining > 0) {
+        timer = setTimeout(() => {
+          setDownloadState(prev => ({ ...prev, status: 'idle', completeTimestamp: null, history: [] }))
+        }, remaining)
+      } else {
+        setDownloadState(prev => ({ ...prev, status: 'idle', completeTimestamp: null, history: [] }))
+      }
+    }
+    return () => clearTimeout(timer)
+  }, [downloadState.status, downloadState.completeTimestamp])
 
   useEffect(() => {
     fetch("http://localhost:8000/v2/conversations")
@@ -1909,7 +2060,7 @@ export default function App() {
             <ProjectsView />
           )}
           {activeTab === 'settings' && <SettingsView />}
-          {activeTab === 'models' && <ModelsView localModels={localModels} recommendedModels={recommendedModels} downloadState={downloadState} downloadModel={downloadModel} pauseDownload={pauseDownload} cancelDownload={cancelDownload} />}
+          {activeTab === 'models' && <ModelsView localModels={localModels} recommendedModels={recommendedModels} downloadState={downloadState} downloadModel={downloadModel} pauseDownload={pauseDownload} cancelDownload={cancelDownload} deleteModel={deleteModel} />}
         </div>
       </main>
 
