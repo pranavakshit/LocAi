@@ -1,5 +1,4 @@
 @startuml LocAi_Architecture
-skinparam backgroundColor #F0F0F0
 skinparam componentStyle rectangle
 skinparam linetype ortho
 
