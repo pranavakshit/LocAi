@@ -50,18 +50,6 @@ jobs:
         run: |
           iscc LocAi.iss
 
-      - name: Get Release Notes
-        id: release_notes
-        run: |
-          if (Test-Path "RELEASE_NOTES_LATEST.md") {
-            $notes = Get-Content "RELEASE_NOTES_LATEST.md" -Raw
-            echo "notes<<EOF" >> $env:GITHUB_OUTPUT
-            echo "$notes" >> $env:GITHUB_OUTPUT
-            echo "EOF" >> $env:GITHUB_OUTPUT
-          } else {
-            echo "notes=Release of LocAi" >> $env:GITHUB_OUTPUT
-          }
-          
       - name: Determine Tag
         id: get_tag
         run: |
@@ -86,6 +74,17 @@ jobs:
             echo "TAG_NAME=$unused_tag" >> $env:GITHUB_ENV
           }
 
+      - name: Get Release Notes from Tag
+        id: release_notes
+        run: |
+          $notes = git tag -l --format='%(contents)' ${{ env.TAG_NAME }}
+          if (-not $notes) {
+            $notes = "Release ${{ env.TAG_NAME }}"
+          }
+          echo "notes<<EOF" >> $env:GITHUB_OUTPUT
+          echo "$notes" >> $env:GITHUB_OUTPUT
+          echo "EOF" >> $env:GITHUB_OUTPUT
+
       - name: Rename Executables
         run: |
           Move-Item -Path "Output\LocAi-installer.exe" -Destination "Output\LocAi-${{ env.TAG_NAME }}-installer.exe"
@@ -105,12 +104,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cleanup Release Notes
-        run: |
-          if (Test-Path "RELEASE_NOTES_LATEST.md") {
-            git config --global user.name 'github-actions[bot]'
-            git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-            git rm RELEASE_NOTES_LATEST.md
-            git commit -m "chore: clean up release notes after publish"
-            git push origin HEAD:main
-          }
+
