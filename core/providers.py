@@ -110,34 +110,37 @@ class OllamaProvider(InferenceProvider):
 
     def pull_model_stream(self, model: str) -> Generator[str, None, None]:
         try:
-            res = requests.post(
+            with requests.post(
                 f"{self.base_url}/api/pull",
                 json={"name": model},
                 stream=True
-            )
-
-            seen_status = set()
-            for line in res.iter_lines():
-                if not line:
-                    continue
-
-                try:
-                    j = json.loads(line.decode("utf-8"))
-
-                    # status (print once)
-                    if "status" in j and "digest" not in j:
-                        status = j["status"]
-                        if status not in seen_status:
-                            yield status + "\n"
-                            seen_status.add(status)
-
-                    # progress
-                    if "digest" in j and "completed" in j and "total" in j:
-                        percent = (j["completed"] / j["total"]) * 100
-                        yield f"pulling {j['digest'][:12]}: {percent:.2f}%\n"
-
-                except Exception:
-                    pass
+            ) as res:
+                seen_status = set()
+                for line in res.iter_lines():
+                    if not line:
+                        continue
+    
+                    try:
+                        j = json.loads(line.decode("utf-8"))
+    
+                        # status (print once)
+                        if "status" in j and "digest" not in j:
+                            status = j["status"]
+                            if status not in seen_status:
+                                yield json.dumps({"status": status}) + "\n"
+                                seen_status.add(status)
+    
+                        # progress
+                        if "digest" in j and "completed" in j and "total" in j:
+                            yield json.dumps({
+                                "status": "pulling",
+                                "digest": j["digest"],
+                                "completed": j["completed"],
+                                "total": j["total"]
+                            }) + "\n"
+    
+                    except Exception:
+                        pass
                     
         except Exception as e:
             yield f"[Error pulling model] {e}\n"

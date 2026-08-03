@@ -237,9 +237,21 @@ def get_models():
 
 @app.post("/model/pull")
 def download_model(req: ModelRequest):
-    for _ in chat_router.inference_provider.pull_model_stream(req.model):
-        pass
-    return {"status": "downloading", "model": req.model}
+    def stream():
+        for chunk in chat_router.inference_provider.pull_model_stream(req.model):
+            yield chunk
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+@app.get("/models/search")
+def search_models(q: str):
+    try:
+        import re
+        html = requests.get(f"https://ollama.com/library?q={q}").text
+        matches = re.findall(r'href="/library/([^/"]+)"', html)
+        models = list(dict.fromkeys(matches))
+        return {"models": models}
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.post("/rag/add")
 def add_rag_doc(req: RAGRequest):

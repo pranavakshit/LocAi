@@ -10,6 +10,25 @@ declare global {
 type Tab = 'chat' | 'playground' | 'analysis' | 'files' | 'settings' | 'models'
 type NavSection = 'new-chat' | 'history' | 'models' | 'files' | 'analytics' | 'config'
 
+type DownloadState = {
+  name: string
+  status: 'idle' | 'downloading' | 'paused'
+  progress: number
+  completed: number
+  total: number
+  speed: number
+  eta: number
+}
+
+export function formatBytes(bytes: number, decimals = 2) {
+    if (bytes === 0) return '0 B'
+    const k = 1000
+    const dm = decimals < 0 ? 0 : decimals
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i]
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -931,50 +950,48 @@ function ProjectsView() {
 
 // ─── Models View ─────────────────────────────────────────────────────────────
 
-function ModelsView({ localModels, recommendedModels }: { localModels: string[], recommendedModels: string[] }) {
+function ModelsView({ 
+  localModels, 
+  recommendedModels, 
+  downloadState, 
+  downloadModel, 
+  pauseDownload, 
+  cancelDownload 
+}: { 
+  localModels: string[], 
+  recommendedModels: string[],
+  downloadState: DownloadState,
+  downloadModel: (m: string) => void,
+  pauseDownload: () => void,
+  cancelDownload: () => void
+}) {
   const [downloadInput, setDownloadInput] = useState('')
-  const [downloading, setDownloading] = useState(false)
-  const [progress, setProgress] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<string[]>([])
+  const [isSearching, setIsSearching] = useState(false)
 
-  const downloadModel = async (modelName: string) => {
-    if (!modelName.trim()) return
-    if (downloading) { alert("Only one download allowed at a time."); return; }
-    setDownloading(true)
-    setProgress(0)
-    
-    // Simulate progress bar for now since API doesn't stream progress yet
-    const interval = setInterval(() => {
-      setProgress(p => Math.min(p + 10, 95))
-    }, 1000)
-
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!searchQuery.trim()) return
+    setIsSearching(true)
     try {
-      await fetch("http://localhost:8000/model/pull", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: modelName })
-      })
-      clearInterval(interval)
-      setProgress(100)
-      setTimeout(() => {
-        alert(`Successfully downloaded ${modelName}`)
-        setDownloading(false)
-        setDownloadInput('')
-        // Need to trigger a refresh of local models, ideally via props or global state
-      }, 500)
+      const res = await fetch(`http://localhost:8000/models/search?q=${searchQuery}`)
+      const data = await res.json()
+      setSearchResults(data.models || [])
     } catch (e) {
-      clearInterval(interval)
-      alert(`Failed to download ${modelName}`)
-      setDownloading(false)
+      console.error(e)
+    } finally {
+      setIsSearching(false)
     }
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 24, background: 'var(--bg)' }}>
-      <div style={{ maxWidth: 800 }}>
+    <div style={{ height: '100%', overflowY: 'auto', padding: 24, background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ maxWidth: 1000, width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
         <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', marginBottom: 4, letterSpacing: '-0.01em' }}>Model Manager</h2>
         <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 24 }}>Manage downloaded models and discover new ones.</div>
 
-        <div style={{ display: 'flex', gap: 24 }}>
+        <div style={{ display: 'flex', gap: 24, flex: 1 }}>
           {/* Left Column: Downloaded Models */}
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', marginBottom: 16 }}>Downloaded Models</div>
@@ -984,10 +1001,6 @@ function ModelsView({ localModels, recommendedModels }: { localModels: string[],
                 <div key={model} style={{ padding: '16px', background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)', marginBottom: 4 }}>{model}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-3)', display: 'flex', gap: 12 }}>
-                      <span>Size: 4.2 GB</span>
-                      <span>Context: 8k tokens</span>
-                    </div>
                   </div>
                   <button style={{ padding: '6px 12px', background: 'var(--surface-2)', border: 'none', borderRadius: 6, color: 'var(--red)', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>Delete</button>
                 </div>
@@ -996,16 +1009,16 @@ function ModelsView({ localModels, recommendedModels }: { localModels: string[],
           </div>
 
           {/* Right Column: Download New */}
-          <div style={{ width: 320 }}>
+          <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ padding: 20, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-1)', marginBottom: 12 }}>Download a model</div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-1)', marginBottom: 12 }}>Direct Download</div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   type="text"
                   placeholder="e.g. gemma:2b"
                   value={downloadInput}
                   onChange={e => setDownloadInput(e.target.value)}
-                  disabled={downloading}
+                  disabled={downloadState.status !== 'idle'}
                   style={{
                     flex: 1, padding: '8px 12px', background: 'var(--surface)', border: '1px solid var(--border)',
                     borderRadius: 6, outline: 'none', color: 'var(--text-1)', fontSize: 12.5,
@@ -1013,45 +1026,79 @@ function ModelsView({ localModels, recommendedModels }: { localModels: string[],
                 />
                 <button
                   onClick={() => downloadModel(downloadInput)}
-                  disabled={downloading || !downloadInput.trim()}
+                  disabled={downloadState.status !== 'idle' || !downloadInput.trim()}
                   style={{
-                    padding: '8px 16px', background: 'var(--accent)', border: 'none',
-                    borderRadius: 6, color: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 500,
-                    opacity: downloading || !downloadInput.trim() ? 0.6 : 1
+                    padding: '8px 16px', background: downloadState.status !== 'idle' ? 'var(--surface-2)' : 'var(--accent)', border: 'none',
+                    borderRadius: 6, color: downloadState.status !== 'idle' ? 'var(--text-3)' : '#fff', cursor: 'pointer',
+                    fontSize: 12.5, fontWeight: 500
                   }}
                 >
                   Pull
                 </button>
               </div>
-              
-              {downloading && (
-                <div style={{ marginTop: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-2)', marginBottom: 6 }}>
-                    <span>Downloading...</span>
-                    <span>{progress}%</span>
-                  </div>
-                  <div style={{ height: 4, background: 'var(--surface)', borderRadius: 2, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${progress}%`, background: 'var(--accent)', transition: 'width 200ms ease-out' }} />
-                  </div>
-                </div>
-              )}
+            </div>
 
-              <div style={{ marginTop: 24 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Recommended</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {recommendedModels.slice(0, 5).map(m => (
-                    <button key={m} onClick={() => setDownloadInput(m)} style={{
-                      textAlign: 'left', padding: '6px 8px', background: 'transparent', border: 'none',
-                      color: 'var(--accent)', cursor: 'pointer', fontSize: 12, borderRadius: 4,
-                    }} onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)'} onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = 'transparent'}>
-                      {m}
-                    </button>
-                  ))}
-                </div>
+            <div style={{ padding: 20, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', flexDirection: 'column', flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-1)', marginBottom: 12 }}>Search Registry</div>
+              <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                <input
+                  type="text"
+                  placeholder="Search models..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={{
+                    flex: 1, padding: '8px 12px', background: 'var(--surface)', border: '1px solid var(--border)',
+                    borderRadius: 6, outline: 'none', color: 'var(--text-1)', fontSize: 12.5,
+                  }}
+                />
+                <button type="submit" disabled={isSearching} style={{
+                    padding: '8px 16px', background: 'var(--surface-2)', border: '1px solid var(--border)',
+                    borderRadius: 6, color: 'var(--text-1)', cursor: 'pointer', fontSize: 12.5, fontWeight: 500
+                }}>
+                  {isSearching ? '...' : 'Search'}
+                </button>
+              </form>
+
+              <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 400 }}>
+                {searchResults.map(model => (
+                   <div key={model} style={{ padding: '12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                     <span style={{ fontSize: 13, color: 'var(--text-1)' }}>{model}</span>
+                     <button onClick={() => { setDownloadInput(model); downloadModel(model); }} disabled={downloadState.status !== 'idle'} style={{ padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--accent)', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>
+                       Download
+                     </button>
+                   </div>
+                ))}
               </div>
             </div>
           </div>
         </div>
+        
+        {/* Download Banner */}
+        {downloadState.status !== 'idle' && (
+          <div style={{ marginTop: 24, padding: 20, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)' }}>Downloading {downloadState.name}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {downloadState.status === 'downloading' && (
+                  <button onClick={pauseDownload} style={{ padding: '6px 12px', background: 'var(--surface-2)', border: 'none', borderRadius: 6, color: 'var(--text-1)', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>Pause</button>
+                )}
+                {downloadState.status === 'paused' && (
+                  <button onClick={() => downloadModel(downloadState.name)} style={{ padding: '6px 12px', background: 'var(--accent)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>Resume</button>
+                )}
+                <button onClick={cancelDownload} style={{ padding: '6px 12px', background: 'var(--surface-2)', border: 'none', borderRadius: 6, color: 'var(--red)', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>Cancel</button>
+              </div>
+            </div>
+            
+            <div style={{ height: 6, background: 'var(--surface-2)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ height: '100%', background: 'var(--accent)', width: `${downloadState.progress}%`, transition: 'width 0.2s linear' }} />
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-3)' }}>
+              <span>{formatBytes(downloadState.completed)} / {formatBytes(downloadState.total)}</span>
+              <span>{formatBytes(downloadState.speed)}/s • ETA: {Math.ceil(downloadState.eta)}s</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1218,7 +1265,7 @@ function SettingsView() {
 
 // ─── Right Panel ───────────────────────────────────────────────────────────────
 
-function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, setMaxTokens, systemPrompt, setSystemPrompt, totalTokens, messageCount, localModels, recommendedModels, activeContext }: {
+function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, setMaxTokens, systemPrompt, setSystemPrompt, totalTokens, messageCount, localModels, recommendedModels, activeContext, downloadState, downloadModel, pauseDownload, cancelDownload }: {
   model: string; setModel: (m: string) => void
   temperature: number; setTemperature: (v: number) => void
   maxTokens: number; setMaxTokens: (v: number) => void
@@ -1228,27 +1275,12 @@ function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, s
   localModels: string[]
   recommendedModels: string[]
   activeContext: string[]
+  downloadState: DownloadState
+  downloadModel: (m: string) => void
+  pauseDownload: () => void
+  cancelDownload: () => void
 }) {
   const [downloadInput, setDownloadInput] = useState('')
-  const [downloading, setDownloading] = useState(false)
-
-  const downloadModel = async (modelName: string) => {
-    if (!modelName.trim()) return
-    setDownloading(true)
-    try {
-      await fetch("http://localhost:8000/model/pull", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: modelName })
-      })
-      alert(`Successfully downloaded ${modelName}`)
-    } catch (e) {
-      alert(`Failed to download ${modelName}`)
-    }
-    setDownloading(false)
-    setDownloadInput('')
-  }
-
   return (
     <aside style={{
       width: 268, flexShrink: 0,
@@ -1295,8 +1327,8 @@ function RightPanel({ model, setModel, temperature, setTemperature, maxTokens, s
             placeholder="e.g. mistral"
             style={{flex: 1, width: 0, padding: '6px', fontSize: 12, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-1)'}}
           />
-          <button onClick={() => downloadModel(downloadInput)} disabled={downloading} style={{padding: '6px 10px', fontSize: 12, borderRadius: 4, border: 'none', background: 'var(--accent)', color: 'white', cursor: downloading ? 'not-allowed' : 'pointer'}}>
-            {downloading ? '...' : 'Get'}
+          <button onClick={() => downloadModel(downloadInput)} disabled={downloadState.status !== 'idle'} style={{padding: '6px 10px', fontSize: 12, borderRadius: 4, border: 'none', background: 'var(--accent)', color: 'white', cursor: downloadState.status !== 'idle' ? 'not-allowed' : 'pointer'}}>
+            {downloadState.status !== 'idle' ? '...' : 'Get'}
           </button>
         </div>
         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', marginBottom: 8, letterSpacing: '0.05em' }}>RECOMMENDED</div>
@@ -1449,6 +1481,118 @@ export default function App() {
   const [recommendedModels, setRecommendedModels] = useState<string[]>([])
   const [sessions, setSessions] = useState<any[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+
+  const [downloadState, setDownloadState] = useState<DownloadState>({ name: '', status: 'idle', progress: 0, completed: 0, total: 0, speed: 0, eta: 0 })
+  const downloadAbortRef = useRef<AbortController | null>(null)
+  const lastChunkTimeRef = useRef<number>(0)
+  const lastChunkCompletedRef = useRef<number>(0)
+
+  const fetchLocalModels = () => {
+    fetch("http://localhost:8000/models")
+      .then(res => res.json())
+      .then(data => {
+        setLocalModels(data.models || [])
+        if (data.models && data.models.length > 0 && !selectedModel) {
+          setSelectedModel(data.models[0])
+        }
+      })
+      .catch(console.error)
+  }
+
+  const downloadModel = async (modelName: string) => {
+    if (!modelName.trim()) return
+    setActiveTab('models')
+    
+    setDownloadState(prev => prev.name !== modelName ? {
+      name: modelName, status: 'downloading', progress: 0, completed: 0, total: 0, speed: 0, eta: 0
+    } : { ...prev, status: 'downloading' })
+
+    const abortController = new AbortController()
+    downloadAbortRef.current = abortController
+    lastChunkTimeRef.current = Date.now()
+    lastChunkCompletedRef.current = downloadState.name === modelName ? downloadState.completed : 0
+
+    try {
+      const res = await fetch("http://localhost:8000/model/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: modelName }),
+        signal: abortController.signal
+      })
+
+      if (!res.body) throw new Error("No readable stream")
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        
+        let boundary = buffer.indexOf('\n')
+        while (boundary !== -1) {
+          const chunkStr = buffer.slice(0, boundary).trim()
+          buffer = buffer.slice(boundary + 1)
+          boundary = buffer.indexOf('\n')
+
+          if (!chunkStr) continue
+
+          try {
+            const chunk = JSON.parse(chunkStr)
+            if (chunk.completed && chunk.total) {
+              const now = Date.now()
+              const dt = (now - lastChunkTimeRef.current) / 1000
+              if (dt >= 0.5) {
+                const bytesDiff = chunk.completed - lastChunkCompletedRef.current
+                const speed = bytesDiff / dt
+                const remaining = chunk.total - chunk.completed
+                const eta = speed > 0 ? remaining / speed : 0
+                
+                setDownloadState(prev => ({
+                  ...prev,
+                  progress: (chunk.completed / chunk.total) * 100,
+                  completed: chunk.completed,
+                  total: chunk.total,
+                  speed: speed,
+                  eta: eta
+                }))
+                
+                lastChunkTimeRef.current = now
+                lastChunkCompletedRef.current = chunk.completed
+              } else {
+                setDownloadState(prev => ({
+                  ...prev,
+                  progress: (chunk.completed / chunk.total) * 100,
+                  completed: chunk.completed,
+                  total: chunk.total
+                }))
+              }
+            }
+          } catch (e) {}
+        }
+      }
+
+      setDownloadState(prev => ({ ...prev, status: 'idle', progress: 100 }))
+      alert(`Successfully downloaded ${modelName}`)
+      fetchLocalModels()
+    } catch (e: any) {
+      if (e.name === 'AbortError') return
+      setDownloadState(prev => ({ ...prev, status: 'idle' }))
+      alert(`Failed to download ${modelName}`)
+    }
+  }
+
+  const pauseDownload = () => {
+    downloadAbortRef.current?.abort()
+    setDownloadState(prev => ({ ...prev, status: 'paused', speed: 0, eta: 0 }))
+  }
+
+  const cancelDownload = () => {
+    downloadAbortRef.current?.abort()
+    setDownloadState({ name: '', status: 'idle', progress: 0, completed: 0, total: 0, speed: 0, eta: 0 })
+  }
 
   useEffect(() => {
     fetch("http://localhost:8000/v2/conversations")
@@ -1757,7 +1901,7 @@ export default function App() {
             <ProjectsView />
           )}
           {activeTab === 'settings' && <SettingsView />}
-          {activeTab === 'models' && <ModelsView localModels={localModels} recommendedModels={recommendedModels} />}
+          {activeTab === 'models' && <ModelsView localModels={localModels} recommendedModels={recommendedModels} downloadState={downloadState} downloadModel={downloadModel} pauseDownload={pauseDownload} cancelDownload={cancelDownload} />}
         </div>
       </main>
 
@@ -1810,6 +1954,10 @@ export default function App() {
           localModels={localModels}
           recommendedModels={recommendedModels}
           activeContext={[]}
+          downloadState={downloadState}
+          downloadModel={downloadModel}
+          pauseDownload={pauseDownload}
+          cancelDownload={cancelDownload}
         />
       )}
       
