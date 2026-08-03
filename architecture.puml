@@ -1,6 +1,5 @@
 @startuml LocAi_Architecture
 skinparam componentStyle rectangle
-skinparam linetype ortho
 ' ==========================================================
 ' Client Layer (React SPA + PyWebView Native Container)
 ' ==========================================================
