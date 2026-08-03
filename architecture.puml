@@ -13,7 +13,9 @@ package "Client Layer (Frontend UI)" {
       component "ChatView" as chatview <<Component>>
       component "PlaygroundView" as playground <<Component>>
       component "ModelsView" as modelsview <<Component>>
-      component "RightPanel (Settings)" as rightpanel <<Component>>
+      component "SettingsView" as settingsview <<Component>>
+      component "ProjectsView" as projectsview <<Component>>
+      component "Download Analytics (Recharts)" as recharts <<Component>>
       component "Artifact Canvas" as canvas <<Component>>
       component "MessageBubble" as msgbubble <<Component>>
     }
@@ -26,8 +28,10 @@ package "Client Layer (Frontend UI)" {
     app --> chatview
     app --> playground
     app --> modelsview
-    app --> rightpanel
+    app --> settingsview
+    app --> projectsview
     app --> canvas
+    modelsview --> recharts
     chatview --> msgbubble
   }
 }
@@ -116,10 +120,14 @@ package "External Services" {
 ' ==========================================================
 gui --> app : Mounts React App
 
-app --> fastapi : HTTP POST /chat (Streaming)
-app --> fastapi : HTTP POST /model/pull
-app --> fastapi : HTTP DELETE /models/delete
-app --> fastapi : HTTP GET /v2/conversations
+app --> fastapi : HTTP POST /chat (Streaming LLM)
+app --> fastapi : HTTP GET, POST, DELETE /v2/conversations (Chat History)
+app --> fastapi : HTTP GET, POST /model & /model/pull (Model Management)
+app --> fastapi : HTTP GET, DELETE /models, /models/recommended, /models/search, /models/delete (Local Models)
+app --> fastapi : HTTP GET, POST /projects (Workspaces)
+app --> fastapi : HTTP GET, POST /config (Settings)
+app --> fastapi : HTTP POST /execute (Code Sandbox)
+app --> fastapi : HTTP GET /update/check (GitHub Releases)
 
 fastapi --> eventbus : Registers Callbacks for Streaming
 fastapi --> chatrouter : Routes /chat requests
