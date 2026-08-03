@@ -1,28 +1,32 @@
 @startuml LocAi_Architecture
+!theme plain
+skinparam backgroundColor transparent
 skinparam componentStyle rectangle
 skinparam linetype ortho
-
+skinparam defaultFontName Arial
+skinparam shadowing false
+skinparam RoundCorner 8
 ' ==========================================================
 ' Client Layer (React SPA + PyWebView Native Container)
 ' ==========================================================
 package "Client Layer (Frontend UI)" {
-  [Native UI Wrapper (modern_app.py)] as gui <<pywebview>>
+  component "Native UI Wrapper (modern_app.py)" as gui <<pywebview>>
   
   package "React SPA (ui/src/)" {
-    [App Component (App.tsx)] as app <<Root>>
+    component "App Component (App.tsx)" as app <<Root>>
     
     package "Views & Components" {
-      [ChatView] as chatview <<Component>>
-      [PlaygroundView] as playground <<Component>>
-      [ModelsView] as modelsview <<Component>>
-      [RightPanel (Settings)] as rightpanel <<Component>>
-      [Artifact Canvas] as canvas <<Component>>
-      [MessageBubble] as msgbubble <<Component>>
+      component "ChatView" as chatview <<Component>>
+      component "PlaygroundView" as playground <<Component>>
+      component "ModelsView" as modelsview <<Component>>
+      component "RightPanel (Settings)" as rightpanel <<Component>>
+      component "Artifact Canvas" as canvas <<Component>>
+      component "MessageBubble" as msgbubble <<Component>>
     }
 
     package "State & Hooks" {
-      [UseTheme] as usetheme <<Hook>>
-      [AbortController (Streaming)] as abortctrl <<State>>
+      component "UseTheme" as usetheme <<Hook>>
+      component "AbortController (Streaming)" as abortctrl <<State>>
     }
 
     app --> chatview
@@ -38,10 +42,10 @@ package "Client Layer (Frontend UI)" {
 ' Backend Layer (FastAPI Core)
 ' ==========================================================
 package "LocAi Core (Python Backend)" {
-  [FastAPI App (server.py)] as fastapi <<Server>>
+  component "FastAPI App (server.py)" as fastapi <<Server>>
   
   package "Event-Driven System" {
-    [Event Bus (events.py)] as eventbus <<Pub/Sub>>
+    component "Event Bus (events.py)" as eventbus <<Pub/Sub>>
     note bottom of eventbus
       Topics:
       - EVENT_CHAT_STARTED
@@ -53,28 +57,28 @@ package "LocAi Core (Python Backend)" {
   }
 
   package "Routers & Business Logic" {
-    [Chat Router (routers.py)] as chatrouter <<Controller>>
-    [ReAct Agent Loop] as reactloop <<Engine>>
+    component "Chat Router (routers.py)" as chatrouter <<Controller>>
+    component "ReAct Agent Loop" as reactloop <<Engine>>
     chatrouter --> reactloop : Executes Autonomous Tasks
   }
 
   package "Services (services/)" {
-    [Conversation Service] as conv_svc <<Service>>
-    [Attachment Service] as attach_svc <<Service>>
-    [Context Engine (context.py)] as context_engine <<Service>>
-    [Inference Provider (providers.py)] as inference <<Service>>
+    component "Conversation Service" as conv_svc <<Service>>
+    component "Attachment Service" as attach_svc <<Service>>
+    component "Context Engine (context.py)" as context_engine <<Service>>
+    component "Inference Provider (providers.py)" as inference <<Service>>
   }
 
   package "Data & Storage Access" {
-    [Settings Manager (settings.py)] as settings_mgr <<DAO>>
-    [Vector Store (db/vector.py)] as vector_store <<DAO>>
-    [Legacy Migrator (db/migrator.py)] as migrator <<Utility>>
+    component "Settings Manager (settings.py)" as settings_mgr <<DAO>>
+    component "Vector Store (db/vector.py)" as vector_store <<DAO>>
+    component "Legacy Migrator (db/migrator.py)" as migrator <<Utility>>
   }
   
   package "Tools (tools.py)" {
-    [DuckDuckGo Search] as tool_ddgs <<Tool>>
-    [Python Evaluator] as tool_pyeval <<Tool>>
-    [Web Scraper] as tool_scrape <<Tool>>
+    component "DuckDuckGo Search" as tool_ddgs <<Tool>>
+    component "Python Evaluator" as tool_pyeval <<Tool>>
+    component "Web Scraper" as tool_scrape <<Tool>>
   }
 }
 

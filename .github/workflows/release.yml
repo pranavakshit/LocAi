@@ -39,10 +39,6 @@ jobs:
       - name: Build React UI
         working-directory: ./ui
         run: |
-          if (-not (Test-Path ".figma/make/site.json")) {
-            New-Item -Path ".figma/make" -ItemType Directory -Force
-            Set-Content -Path ".figma/make/site.json" -Value "{}"
-          }
           npm install
           npm run build
 
