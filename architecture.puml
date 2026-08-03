@@ -1,49 +1,6 @@
 @startuml LocAi_Architecture
-skinparam backgroundColor transparent
 skinparam componentStyle rectangle
 skinparam linetype ortho
-skinparam defaultFontName Arial
-skinparam shadowing false
-skinparam RoundCorner 8
-
-skinparam defaultFontColor #EEEEEE
-skinparam arrowColor #888888
-
-skinparam package {
-    BackgroundColor transparent
-    BorderColor #555555
-    FontColor #AAAAAA
-}
-
-skinparam component {
-    BackgroundColor #2A2A2A
-    BorderColor #555555
-    FontColor #FFFFFF
-}
-
-skinparam note {
-    BackgroundColor #1A1A1A
-    BorderColor #444444
-    FontColor #CCCCCC
-}
-
-skinparam database {
-    BackgroundColor #2A2A2A
-    BorderColor #555555
-    FontColor #FFFFFF
-}
-
-skinparam folder {
-    BackgroundColor transparent
-    BorderColor #555555
-    FontColor #AAAAAA
-}
-
-skinparam cloud {
-    BackgroundColor #2A2A2A
-    BorderColor #555555
-    FontColor #FFFFFF
-}
 ' ==========================================================
 ' Client Layer (React SPA + PyWebView Native Container)
 ' ==========================================================
