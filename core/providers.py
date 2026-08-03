@@ -109,6 +109,8 @@ class OllamaProvider(InferenceProvider):
             return []
 
     def pull_model_stream(self, model: str) -> Generator[str, None, None]:
+        import psutil
+        import time
         try:
             with requests.post(
                 f"{self.base_url}/api/pull",
@@ -116,6 +118,12 @@ class OllamaProvider(InferenceProvider):
                 stream=True
             ) as res:
                 seen_status = set()
+                last_time = time.time()
+                try:
+                    last_io = psutil.disk_io_counters()
+                except Exception:
+                    last_io = None
+
                 for line in res.iter_lines():
                     if not line:
                         continue
@@ -132,12 +140,26 @@ class OllamaProvider(InferenceProvider):
     
                         # progress
                         if "digest" in j and "completed" in j and "total" in j:
-                            yield json.dumps({
+                            payload = {
                                 "status": "pulling",
                                 "digest": j["digest"],
                                 "completed": j["completed"],
                                 "total": j["total"]
-                            }) + "\n"
+                            }
+                            
+                            # Add disk IO speed
+                            now = time.time()
+                            if now - last_time >= 0.5 and last_io is not None:
+                                try:
+                                    io = psutil.disk_io_counters()
+                                    payload["disk_read_speed"] = (io.read_bytes - last_io.read_bytes) / (now - last_time)
+                                    payload["disk_write_speed"] = (io.write_bytes - last_io.write_bytes) / (now - last_time)
+                                    last_io = io
+                                    last_time = now
+                                except Exception:
+                                    pass
+
+                            yield json.dumps(payload) + "\n"
     
                     except Exception:
                         pass

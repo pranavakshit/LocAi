@@ -18,6 +18,8 @@ type DownloadState = {
   total: number
   speed: number
   eta: number
+  diskReadSpeed: number
+  diskWriteSpeed: number
 }
 
 export function formatBytes(bytes: number, decimals = 2) {
@@ -1093,9 +1095,13 @@ function ModelsView({
               <div style={{ height: '100%', background: 'var(--accent)', width: `${downloadState.progress}%`, transition: 'width 0.2s linear' }} />
             </div>
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-3)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-3)' }}>
               <span>{formatBytes(downloadState.completed)} / {formatBytes(downloadState.total)}</span>
-              <span>{formatBytes(downloadState.speed)}/s • ETA: {Math.ceil(downloadState.eta)}s</span>
+              <span>
+                Net: {formatBytes(downloadState.speed)}/s • 
+                Disk R/W: {formatBytes(downloadState.diskReadSpeed)}/s / {formatBytes(downloadState.diskWriteSpeed)}/s • 
+                ETA: {Math.ceil(downloadState.eta)}s
+              </span>
             </div>
           </div>
         )}
@@ -1482,7 +1488,7 @@ export default function App() {
   const [sessions, setSessions] = useState<any[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
 
-  const [downloadState, setDownloadState] = useState<DownloadState>({ name: '', status: 'idle', progress: 0, completed: 0, total: 0, speed: 0, eta: 0 })
+  const [downloadState, setDownloadState] = useState<DownloadState>({ name: '', status: 'idle', progress: 0, completed: 0, total: 0, speed: 0, eta: 0, diskReadSpeed: 0, diskWriteSpeed: 0 })
   const downloadAbortRef = useRef<AbortController | null>(null)
   const lastChunkTimeRef = useRef<number>(0)
   const lastChunkCompletedRef = useRef<number>(0)
@@ -1550,13 +1556,15 @@ export default function App() {
                 const remaining = chunk.total - chunk.completed
                 const eta = speed > 0 ? remaining / speed : 0
                 
-                setDownloadState(prev => ({
+                                setDownloadState(prev => ({
                   ...prev,
                   progress: (chunk.completed / chunk.total) * 100,
                   completed: chunk.completed,
                   total: chunk.total,
                   speed: speed,
-                  eta: eta
+                  eta: eta,
+                  diskReadSpeed: chunk.disk_read_speed !== undefined ? chunk.disk_read_speed : prev.diskReadSpeed,
+                  diskWriteSpeed: chunk.disk_write_speed !== undefined ? chunk.disk_write_speed : prev.diskWriteSpeed
                 }))
                 
                 lastChunkTimeRef.current = now
@@ -1591,7 +1599,7 @@ export default function App() {
 
   const cancelDownload = () => {
     downloadAbortRef.current?.abort()
-    setDownloadState({ name: '', status: 'idle', progress: 0, completed: 0, total: 0, speed: 0, eta: 0 })
+    setDownloadState({ name: '', status: 'idle', progress: 0, completed: 0, total: 0, speed: 0, eta: 0, diskReadSpeed: 0, diskWriteSpeed: 0 })
   }
 
   useEffect(() => {
